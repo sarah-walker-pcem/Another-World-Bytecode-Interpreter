@@ -1,0 +1,2 @@
+Set AnotherWorld$Dir <Obey$Dir>
+Run <AnotherWorld$Dir>.!RunImage

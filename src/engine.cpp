@@ -120,7 +120,7 @@ void Engine::makeGameStateName(uint8_t slot, char *buf) {
 void Engine::saveGameState(uint8_t slot, const char *desc) {
 	char stateFile[20];
 	makeGameStateName(slot, stateFile);
-	File f(true);
+	File f(false);//true);
 	if (!f.open(stateFile, _saveDir, "wb")) {
 		warning("Unable to save state file '%s'", stateFile);
 	} else {
@@ -149,7 +149,7 @@ void Engine::saveGameState(uint8_t slot, const char *desc) {
 void Engine::loadGameState(uint8_t slot) {
 	char stateFile[20];
 	makeGameStateName(slot, stateFile);
-	File f(true);
+	File f(false);//true);
 	if (!f.open(stateFile, _saveDir, "rb")) {
 		warning("Unable to open state file '%s'", stateFile);
 	} else {

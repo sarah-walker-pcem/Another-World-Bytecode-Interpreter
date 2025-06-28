@@ -71,8 +71,11 @@ void Resource::readEntries() {
 	
 
 	if (!f.open("memlist.bin", _dataDir)) {
-		error("Resource::readEntries() unable to open 'memlist.bin' file\n");
-		//Error will exit() no need to return or do anything else.
+		// RISC OS 10 character filename limit...
+		if (!f.open("memlist.bi", _dataDir)) {
+			error("Resource::readEntries() unable to open 'memlist.bin' file\n");
+			//Error will exit() no need to return or do anything else.
+		}
 	}
 
 	//Prepare stats array
