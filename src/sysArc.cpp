@@ -102,14 +102,7 @@ void ArcStub::updateDisplay(const uint8_t *src) {
 
 	_swi(OS_ReadVduVariables, _IN(0) | _IN(1), &vdu_variables_in, &screen_addr);
 
-	//Nibble-swap video buffer...
-	for (int i = 0; i < (160 * 200)/4; i += 4)
-	{
-		screen_addr[i] = ((((uint32_t *)src)[i] << 4) & 0xf0f0f0f0) | ((((uint32_t *)src)[i] >> 4) & 0x0f0f0f0f);
-		screen_addr[i+1] = ((((uint32_t *)src)[i+1] << 4) & 0xf0f0f0f0) | ((((uint32_t *)src)[i+1] >> 4) & 0x0f0f0f0f);
-		screen_addr[i+2] = ((((uint32_t *)src)[i+2] << 4) & 0xf0f0f0f0) | ((((uint32_t *)src)[i+2] >> 4) & 0x0f0f0f0f);
-		screen_addr[i+3] = ((((uint32_t *)src)[i+3] << 4) & 0xf0f0f0f0) | ((((uint32_t *)src)[i+3] >> 4) & 0x0f0f0f0f);
-	}
+	memcpy(screen_addr, src, 160 * 200);
 }
 
 bool ArcStub::keyDown(uint8_t key)

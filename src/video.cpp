@@ -293,13 +293,23 @@ void Video::drawChar(uint8_t character, uint16_t x, uint16_t y, uint8_t color, u
 				uint8_t cmask = 0xFF;
 				uint8_t colb = 0;
 				if (ch & 0x80) {
+#ifdef VIDEO_LITTLE_ENDIAN
+					colb |= color;
+					cmask &= 0xF0;
+#else
 					colb |= color << 4;
 					cmask &= 0x0F;
+#endif
 				}
 				ch <<= 1;
 				if (ch & 0x80) {
+#ifdef VIDEO_LITTLE_ENDIAN
+					colb |= color << 4;
+					cmask &= 0x0F;
+#else
 					colb |= color;
 					cmask &= 0xF0;
+#endif
 				}
 				ch <<= 1;
 				*(p + i) = (b & cmask) | colb;
@@ -315,7 +325,11 @@ void Video::drawPoint(uint8_t color, int16_t x, int16_t y) {
 		uint16_t off = y * 160 + x / 2;
 	
 		uint8_t cmasko, cmaskn;
+#ifdef VIDEO_LITTLE_ENDIAN
+		if (!(x & 1)) {
+#else
 		if (x & 1) {
+#endif
 			cmaskn = 0x0F;
 			cmasko = 0xF0;
 		} else {
@@ -349,15 +363,27 @@ void Video::drawLineBlend(int16_t x1, int16_t x2, uint8_t color) {
 	uint8_t cmasks = 0;	
 	if (xmin & 1) {
 		--w;
+#ifdef VIDEO_LITTLE_ENDIAN
+		cmasks = 0x7F;
+#else
 		cmasks = 0xF7;
+#endif
 	}
 	if (!(xmax & 1)) {
 		--w;
+#ifdef VIDEO_LITTLE_ENDIAN
+		cmaske = 0xF7;
+#else
 		cmaske = 0x7F;
+#endif
 	}
 
 	if (cmasks != 0) {
+#ifdef VIDEO_LITTLE_ENDIAN
+		*p = (*p & cmasks) | 0x80;
+#else
 		*p = (*p & cmasks) | 0x08;
+#endif
 		++p;
 	}
 	while (w--) {
@@ -365,7 +391,11 @@ void Video::drawLineBlend(int16_t x1, int16_t x2, uint8_t color) {
 		++p;
 	}
 	if (cmaske != 0) {
+#ifdef VIDEO_LITTLE_ENDIAN
+		*p = (*p & cmaske) | 0x08;
+#else
 		*p = (*p & cmaske) | 0x80;
+#endif
 		++p;
 	}
 
@@ -383,23 +413,39 @@ void Video::drawLineN(int16_t x1, int16_t x2, uint8_t color) {
 	uint8_t cmasks = 0;	
 	if (xmin & 1) {
 		--w;
+#ifdef VIDEO_LITTLE_ENDIAN
+		cmasks = 0x0F;
+#else
 		cmasks = 0xF0;
+#endif
 	}
 	if (!(xmax & 1)) {
 		--w;
+#ifdef VIDEO_LITTLE_ENDIAN
+		cmaske = 0xF0;
+#else
 		cmaske = 0x0F;
+#endif
 	}
 
 	uint8_t colb = ((color & 0xF) << 4) | (color & 0xF);	
 	if (cmasks != 0) {
+#ifdef VIDEO_LITTLE_ENDIAN
+		*p = (*p & cmasks) | (colb & 0xF0);
+#else
 		*p = (*p & cmasks) | (colb & 0x0F);
+#endif
 		++p;
 	}
 	while (w--) {
 		*p++ = colb;
 	}
 	if (cmaske != 0) {
+#ifdef VIDEO_LITTLE_ENDIAN
+		*p = (*p & cmaske) | (colb & 0x0F);
+#else
 		*p = (*p & cmaske) | (colb & 0xF0);
+#endif
 		++p;		
 	}
 
@@ -419,15 +465,27 @@ void Video::drawLineP(int16_t x1, int16_t x2, uint8_t color) {
 	uint8_t cmasks = 0;	
 	if (xmin & 1) {
 		--w;
+#ifdef VIDEO_LITTLE_ENDIAN
+		cmasks = 0x0F;
+#else
 		cmasks = 0xF0;
+#endif
 	}
 	if (!(xmax & 1)) {
 		--w;
+#ifdef VIDEO_LITTLE_ENDIAN
+		cmaske = 0xF0;
+#else
 		cmaske = 0x0F;
+#endif
 	}
 
 	if (cmasks != 0) {
+#ifdef VIDEO_LITTLE_ENDIAN
+		*p = (*p & cmasks) | (*q & 0xF0);
+#else
 		*p = (*p & cmasks) | (*q & 0x0F);
+#endif
 		++p;
 		++q;
 	}
@@ -435,7 +493,11 @@ void Video::drawLineP(int16_t x1, int16_t x2, uint8_t color) {
 		*p++ = *q++;			
 	}
 	if (cmaske != 0) {
+#ifdef VIDEO_LITTLE_ENDIAN
+		*p = (*p & cmaske) | (*q & 0x0F);
+#else
 		*p = (*p & cmaske) | (*q & 0xF0);
+#endif
 		++p;
 		++q;
 	}
