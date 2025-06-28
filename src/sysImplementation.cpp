@@ -54,6 +54,7 @@ struct SDLStub : System {
 	virtual void destroyMutex(void *mutex);
 	virtual void lockMutex(void *mutex);
 	virtual void unlockMutex(void *mutex);
+	virtual void getDefaultDataDir(const char **path);
 
 	void prepareGfxMode();
 	void cleanupGfxMode();
@@ -298,6 +299,9 @@ void SDLStub::cleanupGfxMode() {
 void SDLStub::switchGfxMode() {
   cleanupGfxMode();
 	prepareGfxMode();
+}
+
+void SDLStub::getDefaultDataDir(const char **path) {
 }
 
 SDLStub sysImplementation;

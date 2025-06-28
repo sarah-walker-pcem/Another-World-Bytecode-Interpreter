@@ -49,6 +49,9 @@ extern System *stub ;//= System_SDL_create();
 int main(int argc, char *argv[]) {
 	const char *dataPath = ".";
 	const char *savePath = ".";
+
+	stub->getDefaultDataDir(&dataPath);
+
 	for (int i = 1; i < argc; ++i) {
 		bool opt = false;
 		if (strlen(argv[i]) >= 2) {
