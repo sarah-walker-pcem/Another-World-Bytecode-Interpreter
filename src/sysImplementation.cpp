@@ -41,7 +41,7 @@ struct SDLStub : System {
 	virtual void init(const char *title);
 	virtual void destroy();
 	virtual void setPalette(const uint8_t *buf);
-	virtual void updateDisplay(const uint8_t *src);
+	virtual void updateDisplay(const uint8_t *src, uint8_t pageId);
 	virtual void processEvents();
 	virtual void sleep(uint32_t duration);
 	virtual uint32_t getTimeStamp();
@@ -55,6 +55,7 @@ struct SDLStub : System {
 	virtual void lockMutex(void *mutex);
 	virtual void unlockMutex(void *mutex);
 	virtual void getDefaultDataDir(const char **path);
+	virtual bool getVideoPages(uint8_t *pages[4]);
 
 	void prepareGfxMode();
 	void cleanupGfxMode();
@@ -113,7 +114,7 @@ void SDLStub::prepareGfxMode() {
   SDL_SetPaletteColors(_screen->format->palette, palette, 0, NUM_COLORS);
 }
 
-void SDLStub::updateDisplay(const uint8_t *src) {
+void SDLStub::updateDisplay(const uint8_t *src, uint8_t pageId) {
   uint16_t height = SCREEN_H;
 	uint8_t* p = (uint8_t*)_screen->pixels;
 
@@ -302,6 +303,10 @@ void SDLStub::switchGfxMode() {
 }
 
 void SDLStub::getDefaultDataDir(const char **path) {
+}
+
+bool SDLStub::getVideoPages(uint8_t *pages[4]) {
+	return false;
 }
 
 SDLStub sysImplementation;

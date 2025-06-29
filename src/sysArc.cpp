@@ -33,6 +33,9 @@
 #define InternalKey_C			82
 #define InternalKey_Escape		112
 
+#define OSByte_Vsync 			19
+#define OSByte_WriteDisplayScreenBank	113
+
 #define MAX_TIMERS 8
 
 struct ArcTimer {
@@ -55,7 +58,7 @@ struct ArcStub : System {
 	virtual void init(const char *title);
 	virtual void destroy();
 	virtual void setPalette(const uint8_t *buf);
-	virtual void updateDisplay(const uint8_t *src);
+	virtual void updateDisplay(const uint8_t *src, uint8_t pageId);
 	virtual void processEvents();
 	virtual void sleep(uint32_t duration);
 	virtual uint32_t getTimeStamp();
@@ -69,9 +72,11 @@ struct ArcStub : System {
 	virtual void lockMutex(void *mutex);
 	virtual void unlockMutex(void *mutex);
 	virtual void getDefaultDataDir(const char **path);
+	virtual bool getVideoPages(uint8_t *pages[4]);
 
 	bool keyDown(uint8_t key);
 	void timerCallback();
+	void initVideoMemory();
 
 	char *AnotherWorldDir;
 	char AnotherWorldDataDir[256];
@@ -83,16 +88,46 @@ struct ArcStub : System {
 	uint32_t old_callback_register_buffer;
 
 	ArcTimer timers[MAX_TIMERS];
+
+	uint8_t last_page;
 };
 
 extern void *tickerv_handler;
 extern void *callback_handler;
 extern uint32_t *callback_register_buffer;
 
+static const uint32_t videoSize = 160*256*2 + 160*200*2;
+
+void ArcStub::initVideoMemory()
+{
+	const uint32_t vdu_variables_in[] = {148, -1};
+	uint32_t *screen_addr = 0;
+	uint32_t area_size;
+
+	// Read old screen size
+	_swi(OS_ReadDynamicArea, _IN(0) | _OUT(1), 2, &area_size);
+
+	if (area_size < videoSize) {
+		// Attempt to change size. OS_ChangeDynamicArea will exit app on error
+		_swi(OS_ChangeDynamicArea, _INR(0, 1), 2, videoSize - area_size);
+	}
+
+	// Clear out video memory
+	_swi(OS_ReadVduVariables, _IN(0) | _IN(1), &vdu_variables_in, &screen_addr);
+	memset(screen_addr, 0, videoSize);
+}
+
 void ArcStub::init(const char *title) {
 	static const uint8_t mode_string[] = {22, 9, 23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 	memset(timers, 0, sizeof(timers));
+
+	last_page = 2;
+
+	for (int i = 0; i < sizeof(mode_string); i++)
+		_kernel_oswrch(mode_string[i]);
+
+	initVideoMemory();
 
 	old_escape_effect = _kernel_osbyte(200, 1, 0xfe);
 
@@ -102,9 +137,6 @@ void ArcStub::init(const char *title) {
 
 	_swi(OS_Claim, _INR(0, 2),
 	     0x1c, &tickerv_handler, 0);
-
-	for (int i = 0; i < sizeof(mode_string); i++)
-		_kernel_oswrch(mode_string[i]);
 
 	memset(&input, 0, sizeof(input));
 }
@@ -141,13 +173,47 @@ void ArcStub::setPalette(const uint8_t *p) {
 	}
 }
 
-void ArcStub::updateDisplay(const uint8_t *src) {
+void ArcStub::updateDisplay(const uint8_t *src, uint8_t pageId) {
+	uint8_t new_page = last_page;
+
+	switch (pageId) {
+	case 1:
+		new_page = 1;
+		break;
+	case 2:
+		new_page = 2;
+		break;
+	case 0xff:
+		new_page = (last_page == 1) ? 2 : 1;
+		break;
+	}
+
+	_kernel_osbyte(OSByte_WriteDisplayScreenBank, new_page, 0);
+	_kernel_osbyte(OSByte_Vsync, 0, 0);
+	last_page = new_page;
+}
+
+bool ArcStub::getVideoPages(uint8_t *pages[4])
+{
 	const uint32_t vdu_variables_in[] = {148, -1};
-	uint32_t *screen_addr = 0;
+	uint8_t *screen_addr = 0;
 
 	_swi(OS_ReadVduVariables, _IN(0) | _IN(1), &vdu_variables_in, &screen_addr);
 
-	memcpy(screen_addr, src, 160 * 200);
+	// Allocate the top of screen memory to the actual display pages; this
+	// ensures we can use OSByte calls to change page without having to
+	// use screen-sized allocations for the back buffers
+	//
+	// Add an offset to centre the pages on the screen
+	uint32_t offset = ((256 - 200) / 2) * 160;
+
+	pages[1] = screen_addr + offset;
+	pages[2] = screen_addr + offset + 160*256;
+
+	pages[0] = screen_addr + 160*256*2;
+	pages[3] = screen_addr + 160*256*2 + 160*200;
+
+	return true;
 }
 
 bool ArcStub::keyDown(uint8_t key)

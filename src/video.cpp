@@ -44,11 +44,13 @@ void Video::init() {
 
 	paletteIdRequested = NO_PALETTE_CHANGE_REQUESTED;
 
-	uint8_t* tmp = (uint8_t *)malloc(4 * VID_PAGE_SIZE);
-	memset(tmp,0,4 * VID_PAGE_SIZE);
+	if (!sys->getVideoPages(_pages)) {
+		uint8_t* tmp = (uint8_t *)malloc(4 * VID_PAGE_SIZE);
+		memset(tmp,0,4 * VID_PAGE_SIZE);
 	
-	for (int i = 0; i < 4; ++i) {
-    _pages[i] = tmp + i * VID_PAGE_SIZE;
+		for (int i = 0; i < 4; ++i) {
+			_pages[i] = tmp + i * VID_PAGE_SIZE;
+		}
 	}
 
 	_curPagePtr3 = getPage(1);
@@ -647,7 +649,7 @@ void Video::updateDisplay(uint8_t pageId) {
 	//Q: Why 160 ?
 	//A: Because one byte gives two palette indices so
 	//   we only need to move 320/2 per line.
-  sys->updateDisplay(_curPagePtr2);
+  sys->updateDisplay(_curPagePtr2, pageId);
 }
 
 void Video::saveOrLoad(Serializer &ser) {

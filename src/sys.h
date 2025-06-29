@@ -58,7 +58,7 @@ struct System {
 	virtual void destroy() = 0;
 
 	virtual void setPalette(const uint8_t *buf) = 0;
-	virtual void updateDisplay(const uint8_t *buf) = 0;
+	virtual void updateDisplay(const uint8_t *buf, uint8_t pageId) = 0;
 
 	virtual void processEvents() = 0;
 	virtual void sleep(uint32_t duration) = 0;
@@ -77,6 +77,8 @@ struct System {
 	virtual void unlockMutex(void *mutex) = 0;
 
 	virtual void getDefaultDataDir(const char **path) = 0;
+
+	virtual bool getVideoPages(uint8_t *pages[4]) = 0;
 };
 
 struct MutexStack {
