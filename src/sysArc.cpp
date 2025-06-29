@@ -23,6 +23,7 @@
 #include <unixlib/local.h>
 #include "sys.h"
 #include "util.h"
+#include "mixer.h"
 
 #define InternalKey_Up			57
 #define InternalKey_Down		41
@@ -30,6 +31,16 @@
 #define InternalKey_Right		121
 #define InternalKey_Space		98
 #define InternalKey_C			82
+#define InternalKey_Escape		112
+
+#define MAX_TIMERS 8
+
+struct ArcTimer {
+	uint32_t interval;
+	uint32_t next_callback;
+	System::TimerCallback callback;
+	void *param;
+};
 
 struct ArcStub : System {
 	enum {
@@ -60,13 +71,37 @@ struct ArcStub : System {
 	virtual void getDefaultDataDir(const char **path);
 
 	bool keyDown(uint8_t key);
+	void timerCallback();
 
 	char *AnotherWorldDir;
 	char AnotherWorldDataDir[256];
+
+	uint8_t old_escape_effect;
+
+	uint32_t old_callback_handler;
+	uint32_t old_callback_r12;
+	uint32_t old_callback_register_buffer;
+
+	ArcTimer timers[MAX_TIMERS];
 };
+
+extern void *tickerv_handler;
+extern void *callback_handler;
+extern uint32_t *callback_register_buffer;
 
 void ArcStub::init(const char *title) {
 	static const uint8_t mode_string[] = {22, 9, 23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+	memset(timers, 0, sizeof(timers));
+
+	old_escape_effect = _kernel_osbyte(200, 1, 0xfe);
+
+	_swi(OS_ChangeEnvironment, _INR(0,3) | _OUTR(1,3),
+	     7, &callback_handler, 0, &callback_register_buffer,
+	     &old_callback_handler, &old_callback_r12, &old_callback_register_buffer);
+
+	_swi(OS_Claim, _INR(0, 2),
+	     0x1c, &tickerv_handler, 0);
 
 	for (int i = 0; i < sizeof(mode_string); i++)
 		_kernel_oswrch(mode_string[i]);
@@ -75,6 +110,16 @@ void ArcStub::init(const char *title) {
 }
 
 void ArcStub::destroy() {
+	_swi(OS_Release, _INR(0, 2),
+	     0x1c, &tickerv_handler, 0);
+
+	_swi(OS_ChangeEnvironment, _INR(0,3),
+	     7, old_callback_handler, old_callback_r12, old_callback_register_buffer);
+
+	_kernel_osbyte(200, old_escape_effect, 0);
+
+	_kernel_oswrch(22);
+	_kernel_oswrch(12);
 }
 
 void ArcStub::setPalette(const uint8_t *p) {
@@ -135,6 +180,8 @@ void ArcStub::processEvents() {
 		input.button = false;
 	if (keyDown(InternalKey_C))
 		input.code = true;
+	if (keyDown(InternalKey_Escape))
+		input.quit = true;
 }
 
 void ArcStub::sleep(uint32_t duration) {
@@ -159,25 +206,30 @@ uint32_t ArcStub::getTimeStamp() {
 	return mono_time * 10;
 }
 
-void ArcStub::startAudio(AudioCallback callback, void *param) {
-/*	SDL_AudioSpec desired;
-	memset(&desired, 0, sizeof(desired));
+static uint32_t channel_handler_header[4];
+uint32_t sound_config_data[5];
 
-	desired.freq = SOUND_SAMPLE_RATE;
-	desired.format = AUDIO_U8;
-	desired.channels = 1;
-	desired.samples = 2048;
-	desired.callback = callback;
-	desired.userdata = param;
-	if (SDL_OpenAudio(&desired, NULL) == 0) {
-		SDL_PauseAudio(0);
-	} else {
-		error("SDLStub::startAudio() unable to open sound device");
-	}*/
+void ArcStub::startAudio(AudioCallback callback, void *param) {
+	channel_handler_header[0] = (uint32_t)callback;
+	channel_handler_header[1] = 0;
+	channel_handler_header[2] = 0;
+	channel_handler_header[3] = 0;
+
+	sound_config_data[0] = AUDIO_NUM_CHANNELS;
+	sound_config_data[1] = 256;
+	sound_config_data[2] = 48; // 48us, 20833 Hz
+	sound_config_data[3] = (uint32_t)channel_handler_header;
+	sound_config_data[4] = 0;
+
+	_swi(Sound_Configure, _INR(0, 4) | _OUTR(0, 4),
+	      sound_config_data[0],  sound_config_data[1],  sound_config_data[2],  sound_config_data[3],  sound_config_data[4],
+	     &sound_config_data[0], &sound_config_data[1], &sound_config_data[2], &sound_config_data[3], &sound_config_data[4]);
+	// Old sound config written to sound_config_data[]
 }
 
 void ArcStub::stopAudio() {
-//	SDL_CloseAudio();
+	_swi(Sound_Configure, _INR(0, 4),
+	     sound_config_data[0], sound_config_data[1], sound_config_data[2], sound_config_data[3], sound_config_data[4]);
 }
 
 uint32_t ArcStub::getOutputSampleRate() {
@@ -185,12 +237,27 @@ uint32_t ArcStub::getOutputSampleRate() {
 }
 
 int ArcStub::addTimer(uint32_t delay, TimerCallback callback, void *param) {
-//	return SDL_AddTimer(delay, (SDL_TimerCallback)callback, param);
+	uint32_t mono_time;
+
+	_swi(OS_ReadMonotonicTime, _OUT(0), &mono_time);
+
+	for (int i = 0; i < MAX_TIMERS; i++) {
+		if (!timers[i].interval) {
+			timers[i].callback = callback;
+			timers[i].param = param;
+			timers[i].next_callback = (mono_time * 10) + delay;
+			asm volatile("": : :"memory");
+			timers[i].interval = delay;
+
+			return i;
+		}
+	}
+
 	return 0;
 }
 
 void ArcStub::removeTimer(int timerId) {
-//	SDL_RemoveTimer(timerId);
+	timers[timerId].interval = 0;
 }
 
 void *ArcStub::createMutex() {
@@ -222,6 +289,24 @@ void ArcStub::getDefaultDataDir(const char **path) {
 	}
 }
 
+void ArcStub::timerCallback() {
+	uint32_t mono_time;
+
+	_swi(OS_ReadMonotonicTime, _OUT(0), &mono_time);
+	mono_time *= 10;
+
+	for (int i = 0; i < MAX_TIMERS; i++) {
+		while (timers[i].interval && (mono_time - timers[i].next_callback) < (1u << 31)) {
+			timers[i].interval = timers[i].callback(timers[i].interval, timers[i].param);
+			timers[i].next_callback += timers[i].interval;
+		}
+	}
+}
+
 ArcStub sysImplementation;
 System *stub = &sysImplementation;
 
+extern "C" void arcStubTimerCallback()
+{
+	sysImplementation.timerCallback();
+}
