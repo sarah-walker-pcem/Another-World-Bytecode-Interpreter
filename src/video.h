@@ -51,7 +51,7 @@ struct System;
 
 
 struct Video {
-	typedef void (Video::*drawLine)(int16_t x1, int16_t x2, uint8_t col);
+	typedef void (Video::*drawLine)(int32_t x1, int32_t x2, uint8_t col);
 
 	enum {
 		VID_PAGE_SIZE  = 320 * 200 / 2
@@ -91,14 +91,14 @@ struct Video {
 	void readAndDrawPolygon(uint8_t color, uint16_t zoom, const Point &pt);
 	void fillPolygon(uint16_t color, uint16_t zoom, const Point &pt);
 	void readAndDrawPolygonHierarchy(uint16_t zoom, const Point &pt);
-	int32_t calcStep(const Point &p1, const Point &p2, uint16_t &dy);
+	int32_t calcStep(const Point &p1, const Point &p2, uint32_t &dy);
 
-	void drawString(uint8_t color, uint16_t x, uint16_t y, uint16_t strId);
-	void drawChar(uint8_t c, uint16_t x, uint16_t y, uint8_t color, uint8_t *buf);
-	void drawPoint(uint8_t color, int16_t x, int16_t y);
-	void drawLineBlend(int16_t x1, int16_t x2, uint8_t color);
-	void drawLineN(int16_t x1, int16_t x2, uint8_t color);
-	void drawLineP(int16_t x1, int16_t x2, uint8_t color);
+	void drawString(uint8_t color, uint32_t x, uint32_t y, uint16_t strId);
+	void drawChar(uint8_t c, uint32_t x, uint32_t y, uint8_t color, uint8_t *buf);
+	void drawPoint(uint8_t color, int32_t x, int32_t y);
+	void drawLineBlend(int32_t x1, int32_t x2, uint8_t color);
+	void drawLineN(int32_t x1, int32_t x2, uint8_t color);
+	void drawLineP(int32_t x1, int32_t x2, uint8_t color);
 	uint8_t *getPage(uint8_t page);
 	void changePagePtr1(uint8_t page);
 	void fillPage(uint8_t page, uint8_t color);

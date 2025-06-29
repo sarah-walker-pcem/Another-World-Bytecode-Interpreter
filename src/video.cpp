@@ -126,17 +126,17 @@ void Video::fillPolygon(uint16_t color, uint16_t zoom, const Point &pt) {
 		return;
 	}
 	
-	int16_t x1 = pt.x - polygon.bbw / 2;
-	int16_t x2 = pt.x + polygon.bbw / 2;
-	int16_t y1 = pt.y - polygon.bbh / 2;
-	int16_t y2 = pt.y + polygon.bbh / 2;
+	int32_t x1 = pt.x - polygon.bbw / 2;
+	int32_t x2 = pt.x + polygon.bbw / 2;
+	int32_t y1 = pt.y - polygon.bbh / 2;
+	int32_t y2 = pt.y + polygon.bbh / 2;
 
 	if (x1 > 319 || x2 < 0 || y1 > 199 || y2 < 0)
 		return;
 
 	_hliney = y1;
 	
-	uint16_t i, j;
+	uint32_t i, j;
 	i = 0;
 	j = polygon.numPoints - 1;
 	
@@ -155,15 +155,15 @@ void Video::fillPolygon(uint16_t color, uint16_t zoom, const Point &pt) {
 		drawFct = &Video::drawLineBlend;
 	}
 
-	uint32_t cpt1 = x1 << 16;
-	uint32_t cpt2 = x2 << 16;
+	int32_t cpt1 = x1 << 16;
+	int32_t cpt2 = x2 << 16;
 
 	while (1) {
 		polygon.numPoints -= 2;
 		if (polygon.numPoints == 0) {
 			break;
 		}
-		uint16_t h;
+		uint32_t h;
 		int32_t step1 = calcStep(polygon.points[j + 1], polygon.points[j], h);
 		int32_t step2 = calcStep(polygon.points[i - 1], polygon.points[i], h);
 
@@ -244,12 +244,12 @@ void Video::readAndDrawPolygonHierarchy(uint16_t zoom, const Point &pgc) {
 	
 }
 
-int32_t Video::calcStep(const Point &p1, const Point &p2, uint16_t &dy) {
+int32_t Video::calcStep(const Point &p1, const Point &p2, uint32_t &dy) {
 	dy = p2.y - p1.y;
 	return (p2.x - p1.x) * _interpTable[dy] * 4;
 }
 
-void Video::drawString(uint8_t color, uint16_t x, uint16_t y, uint16_t stringId) {
+void Video::drawString(uint8_t color, uint32_t x, uint32_t y, uint16_t stringId) {
 
 	const StrEntry *se = _stringsTableEng;
 
@@ -265,7 +265,7 @@ void Video::drawString(uint8_t color, uint16_t x, uint16_t y, uint16_t stringId)
 	
 
     //Used if the string contains a return carriage.
-	uint16_t xOrigin = x;
+	uint32_t xOrigin = x;
 	int len = strlen(se->str);
 	for (int i = 0; i < len; ++i) {
 
@@ -281,7 +281,7 @@ void Video::drawString(uint8_t color, uint16_t x, uint16_t y, uint16_t stringId)
 	}
 }
 
-void Video::drawChar(uint8_t character, uint16_t x, uint16_t y, uint8_t color, uint8_t *buf) {
+void Video::drawChar(uint8_t character, uint32_t x, uint32_t y, uint8_t color, uint8_t *buf) {
 	if (x <= 39 && y <= 192) {
 		
 		const uint8_t *ft = _font + (character - ' ') * 8;
@@ -321,10 +321,10 @@ void Video::drawChar(uint8_t character, uint16_t x, uint16_t y, uint8_t color, u
 	}
 }
 
-void Video::drawPoint(uint8_t color, int16_t x, int16_t y) {
+void Video::drawPoint(uint8_t color, int32_t x, int32_t y) {
 	debug(DBG_VIDEO, "drawPoint(%d, %d, %d)", color, x, y);
 	if (x >= 0 && x <= 319 && y >= 0 && y <= 199) {
-		uint16_t off = y * 160 + x / 2;
+		uint32_t off = y * 160 + x / 2;
 	
 		uint8_t cmasko, cmaskn;
 #ifdef VIDEO_LITTLE_ENDIAN
@@ -354,13 +354,13 @@ void Video::drawPoint(uint8_t color, int16_t x, int16_t y) {
 
 /* Blend a line in the current framebuffer (_curPagePtr1)
 */
-void Video::drawLineBlend(int16_t x1, int16_t x2, uint8_t color) {
+void Video::drawLineBlend(int32_t x1, int32_t x2, uint8_t color) {
 	debug(DBG_VIDEO, "drawLineBlend(%d, %d, %d)", x1, x2, color);
-	int16_t xmax = MAX(x1, x2);
-	int16_t xmin = MIN(x1, x2);
+	int32_t xmax = MAX(x1, x2);
+	int32_t xmin = MIN(x1, x2);
 	uint8_t *p = _curPagePtr1 + _hliney * 160 + xmin / 2;
 
-	uint16_t w = xmax / 2 - xmin / 2 + 1;
+	uint32_t w = xmax / 2 - xmin / 2 + 1;
 	uint8_t cmaske = 0;
 	uint8_t cmasks = 0;	
 	if (xmin & 1) {
@@ -404,13 +404,13 @@ void Video::drawLineBlend(int16_t x1, int16_t x2, uint8_t color) {
 
 }
 
-void Video::drawLineN(int16_t x1, int16_t x2, uint8_t color) {
+void Video::drawLineN(int32_t x1, int32_t x2, uint8_t color) {
 	debug(DBG_VIDEO, "drawLineN(%d, %d, %d)", x1, x2, color);
-	int16_t xmax = MAX(x1, x2);
-	int16_t xmin = MIN(x1, x2);
+	int32_t xmax = MAX(x1, x2);
+	int32_t xmin = MIN(x1, x2);
 	uint8_t *p = _curPagePtr1 + _hliney * 160 + xmin / 2;
 
-	uint16_t w = xmax / 2 - xmin / 2 + 1;
+	uint32_t w = xmax / 2 - xmin / 2 + 1;
 	uint8_t cmaske = 0;
 	uint8_t cmasks = 0;	
 	if (xmin & 1) {
@@ -454,15 +454,15 @@ void Video::drawLineN(int16_t x1, int16_t x2, uint8_t color) {
 	
 }
 
-void Video::drawLineP(int16_t x1, int16_t x2, uint8_t color) {
+void Video::drawLineP(int32_t x1, int32_t x2, uint8_t color) {
 	debug(DBG_VIDEO, "drawLineP(%d, %d, %d)", x1, x2, color);
-	int16_t xmax = MAX(x1, x2);
-	int16_t xmin = MIN(x1, x2);
-	uint16_t off = _hliney * 160 + xmin / 2;
+	int32_t xmax = MAX(x1, x2);
+	int32_t xmin = MIN(x1, x2);
+	uint32_t off = _hliney * 160 + xmin / 2;
 	uint8_t *p = _curPagePtr1 + off;
 	uint8_t *q = _pages[0] + off;
 
-	uint8_t w = xmax / 2 - xmin / 2 + 1;
+	uint32_t w = xmax / 2 - xmin / 2 + 1;
 	uint8_t cmaske = 0;
 	uint8_t cmasks = 0;	
 	if (xmin & 1) {
