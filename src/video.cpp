@@ -118,6 +118,10 @@ void Video::readAndDrawPolygon(uint8_t color, uint16_t zoom, const Point &pt) {
 
 }
 
+#ifdef USE_ASM_PLOT_CODE
+extern "C" void fillPolygonSegment(uint32_t h, int32_t cpt1, int32_t cpt2, uint32_t color, int32_t step1, int32_t step2, int32_t _hliney, uint8_t *_curPagePtr1, uint8_t *_pages0);
+#endif
+
 void Video::fillPolygon(uint16_t color, uint16_t zoom, const Point &pt) {
 
 	if (polygon.bbw == 0 && polygon.bbh == 1 && polygon.numPoints == 4) {
@@ -177,6 +181,13 @@ void Video::fillPolygon(uint16_t color, uint16_t zoom, const Point &pt) {
 			cpt1 += step1;
 			cpt2 += step2;
 		} else {
+#ifdef USE_ASM_PLOT_CODE
+			fillPolygonSegment(h, cpt1, cpt2, color, step1, step2, _hliney, _curPagePtr1, _pages[0]);
+			cpt1 += step1 * h;
+			cpt2 += step2 * h;
+			_hliney += h;
+			if (_hliney > 199) return;
+#else
 			for (; h != 0; --h) {
 				if (_hliney >= 0) {
 					x1 = cpt1 >> 16;
@@ -192,6 +203,7 @@ void Video::fillPolygon(uint16_t color, uint16_t zoom, const Point &pt) {
 				++_hliney;					
 				if (_hliney > 199) return;
 			}
+#endif
 		}
 	}
 
