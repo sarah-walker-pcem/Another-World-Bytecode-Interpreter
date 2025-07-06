@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unixlib/local.h>
+#include <signal.h>
 #include "sys.h"
 #include "util.h"
 #include "mixer.h"
@@ -81,8 +82,6 @@ struct ArcStub : System {
 	char *AnotherWorldDir;
 	char AnotherWorldDataDir[256];
 
-	uint8_t old_escape_effect;
-
 	uint32_t old_callback_handler;
 	uint32_t old_callback_r12;
 	uint32_t old_callback_register_buffer;
@@ -118,7 +117,12 @@ void ArcStub::initVideoMemory()
 }
 
 void ArcStub::init(const char *title) {
-	static const uint8_t mode_string[] = {22, 9, 23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	struct sigaction sigint_action;
+	const uint8_t mode_string[] = {22, 9, 23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+	// Disable SIGINT (Escape)
+	sigint_action.sa_handler = SIG_IGN;
+	sigaction(SIGINT, &sigint_action, NULL);
 
 	memset(timers, 0, sizeof(timers));
 
@@ -128,8 +132,6 @@ void ArcStub::init(const char *title) {
 		_kernel_oswrch(mode_string[i]);
 
 	initVideoMemory();
-
-	old_escape_effect = _kernel_osbyte(200, 1, 0xfe);
 
 	_swi(OS_ChangeEnvironment, _INR(0,3) | _OUTR(1,3),
 	     7, &callback_handler, 0, &callback_register_buffer,
@@ -147,8 +149,6 @@ void ArcStub::destroy() {
 
 	_swi(OS_ChangeEnvironment, _INR(0,3),
 	     7, old_callback_handler, old_callback_r12, old_callback_register_buffer);
-
-	_kernel_osbyte(200, old_escape_effect, 0);
 
 	_kernel_oswrch(22);
 	_kernel_oswrch(12);
