@@ -616,7 +616,11 @@ void Video::copyPage(const uint8_t *src) {
 					acc |= (p[i & 3] & 0x80) ? 1 : 0;
 					p[i & 3] <<= 1;
 				}
+#ifdef VIDEO_LITTLE_ENDIAN
+				*dst++ = (acc >> 4) | (acc << 4);
+#else
 				*dst++ = acc;
+#endif
 			}
 			++src;
 		}
