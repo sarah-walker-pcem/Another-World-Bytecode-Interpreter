@@ -36,14 +36,14 @@ void VirtualMachine::init() {
 	memset(vmVariables, 0, sizeof(vmVariables));
 	vmVariables[0x54] = 0x81;
 	vmVariables[VM_VARIABLE_RANDOM_SEED] = time(0);
-#ifdef BYPASS_PROTECTION
+//#ifdef BYPASS_PROTECTION
    // these 3 variables are set by the game code
    vmVariables[0xBC] = 0x10;
    vmVariables[0xC6] = 0x80;
    vmVariables[0xF2] = 4000;
    // these 2 variables are set by the engine executable
    vmVariables[0xDC] = 33;
-#endif
+//#endif
 
 	player->_markVar = &vmVariables[VM_VARIABLE_MUS_MARK];
 }
