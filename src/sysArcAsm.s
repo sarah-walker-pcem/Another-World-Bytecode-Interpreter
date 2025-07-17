@@ -34,6 +34,10 @@ callback_register_buffer:
 in_callback:
 	.word 0
 
+callback_stack_registers:
+	.word temp_stack
+	.word temp_stack + 4096
+
 callback_handler:
 	LDR	r0, in_callback
 	CMP	r0, #0
@@ -51,15 +55,21 @@ callback_handler:
 	STMDB	r12!, {r0-r4}
 	LDMIA	r14, {r0-r7}
 	STMDB	r12!, {r0-r7}		// R0-R15 (sans R13) now on user stack
-	STR	r12, [r14]
-	LDMIA	r14, {sp}^		// Update current value of R13_usr
+	STR	r12, old_sp
+
+	// Switch to temporary stack for the next call
+	ADR	sl, callback_stack_registers
+	LDMIA	sl, {sl, sp}^
 
 	TEQP	pc, #0			// Switch to user mode!
 
-	MOV	r0, #0
-	STR	r0, in_callback
 
 	BL	arcStubTimerCallback
+
+	LDR	sp, old_sp		// Restore old stack
+
+	MOV	r0, #0
+	STR	r0, in_callback
 
 	LDMIA	sp!, {r0-r12}
 	LDMIA	sp!, {r14, r15}^
@@ -76,4 +86,13 @@ skip_callback:
 	MOV	r0, r0
 	LDR	r14, [r14, #15*4]
 	MOVS	pc, r14
+
+
+old_sp:
+	.word 0
+
+temp_stack:
+	.rept 1024
+	.word 0
+	.endr
 
