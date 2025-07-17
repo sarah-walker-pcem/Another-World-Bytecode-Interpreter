@@ -89,6 +89,8 @@ struct ArcStub : System {
 	ArcTimer timers[MAX_TIMERS];
 
 	uint8_t last_page;
+
+	bool use_joystick;
 };
 
 extern void *tickerv_handler;
@@ -141,6 +143,8 @@ void ArcStub::init(const char *title) {
 	     0x1c, &tickerv_handler, 0);
 
 	memset(&input, 0, sizeof(input));
+
+	use_joystick = _swix(Joystick_Read, _IN(0), 0) ? false : true;
 }
 
 void ArcStub::destroy() {
@@ -248,6 +252,30 @@ void ArcStub::processEvents() {
 		input.code = true;
 	if (keyDown(InternalKey_Escape))
 		input.quit = true;
+
+	if (use_joystick) {
+		int8_t x, y;
+		uint8_t sw;
+		uint32_t state;
+
+		_swi(Joystick_Read, _IN(0) | _OUT(0), 0, &state);
+
+		y = state & 0xff;
+		x = (state >> 8) & 0xff;
+		sw = (state >> 16) & 0xff;
+
+		if (x < -32)
+			input.dirMask |= PlayerInput::DIR_LEFT;
+		if (x >  32)
+			input.dirMask |= PlayerInput::DIR_RIGHT;
+		if (y >  32)
+			input.dirMask |= PlayerInput::DIR_UP;
+		if (y < -32)
+			input.dirMask |= PlayerInput::DIR_DOWN;
+
+		if (sw)
+			input.button = true;
+	}
 }
 
 void ArcStub::sleep(uint32_t duration) {
