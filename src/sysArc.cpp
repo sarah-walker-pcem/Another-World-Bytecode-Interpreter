@@ -35,7 +35,10 @@
 #define InternalKey_Escape		112
 
 #define OSByte_Vsync 			19
+#define OSByte_WriteVDUScreenBank	112
 #define OSByte_WriteDisplayScreenBank	113
+#define OSByte_KeyboardScan		129
+#define OSByte_ReadCMOSRAM		161
 
 #define MAX_TIMERS 8
 
@@ -91,6 +94,7 @@ struct ArcStub : System {
 	uint8_t last_page;
 
 	bool use_joystick;
+	bool use_vga;
 };
 
 extern void *tickerv_handler;
@@ -98,29 +102,33 @@ extern void *callback_handler;
 extern uint32_t *callback_register_buffer;
 
 static const uint32_t videoSize = 160*256*2 + 160*200*2;
+static const uint32_t videoSizeVga = 160*480*2;
 
 void ArcStub::initVideoMemory()
 {
 	const uint32_t vdu_variables_in[] = {148, -1};
 	uint32_t *screen_addr = 0;
 	uint32_t area_size;
+	uint32_t video_size = use_vga ? videoSizeVga : videoSize;
 
 	// Read old screen size
 	_swi(OS_ReadDynamicArea, _IN(0) | _OUT(1), 2, &area_size);
 
-	if (area_size < videoSize) {
+	if (area_size < video_size) {
 		// Attempt to change size. OS_ChangeDynamicArea will exit app on error
-		_swi(OS_ChangeDynamicArea, _INR(0, 1), 2, videoSize - area_size);
+		_swi(OS_ChangeDynamicArea, _INR(0, 1), 2, video_size - area_size);
 	}
 
 	// Clear out video memory
 	_swi(OS_ReadVduVariables, _IN(0) | _IN(1), &vdu_variables_in, &screen_addr);
-	memset(screen_addr, 0, videoSize);
+	memset(screen_addr, 0, video_size);
 }
 
 void ArcStub::init(const char *title) {
 	struct sigaction sigint_action;
 	const uint8_t mode_string[] = {22, 9, 23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	const uint8_t vga_mode_string[] = {22, 48, 23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	uint8_t riscos_version;
 
 	// Disable SIGINT (Escape)
 	sigint_action.sa_handler = SIG_IGN;
@@ -130,8 +138,19 @@ void ArcStub::init(const char *title) {
 
 	last_page = 2;
 
+	riscos_version = _kernel_osbyte(OSByte_KeyboardScan, 0, 0xff) & 0xff;
+	if (riscos_version >= 0xa5) {
+		// RISC OS 3.5 or later (RiscPC hardware and later), use VGA modes
+		use_vga = true;
+	} else {
+		int monitor_type = (_kernel_osbyte(OSByte_ReadCMOSRAM, 133, 0) >> 10) & 0x1f;
+
+		// Use VGA modes on VGA, SVGA and LCD monitor types
+		use_vga = (monitor_type == 3 || monitor_type == 4 || monitor_type == 5);
+	}
+
 	for (int i = 0; i < sizeof(mode_string); i++)
-		_kernel_oswrch(mode_string[i]);
+		_kernel_oswrch(use_vga ? vga_mode_string[i] : mode_string[i]);
 
 	initVideoMemory();
 
@@ -155,7 +174,7 @@ void ArcStub::destroy() {
 	     7, old_callback_handler, old_callback_r12, old_callback_register_buffer);
 
 	_kernel_oswrch(22);
-	_kernel_oswrch(12);
+	_kernel_oswrch(use_vga ? 27 : 12);
 }
 
 void ArcStub::setPalette(const uint8_t *p) {
@@ -192,6 +211,24 @@ void ArcStub::updateDisplay(const uint8_t *src, uint8_t pageId) {
 		break;
 	}
 
+	if (use_vga) {
+		const uint32_t vdu_variables_in[] = {148, -1};
+		uint8_t *screen_addr = 0;
+
+		_kernel_osbyte(OSByte_WriteVDUScreenBank, new_page, 0);
+		_swi(OS_ReadVduVariables, _IN(0) | _IN(1), &vdu_variables_in, &screen_addr);
+
+		screen_addr += 40*160;
+
+		for (int y = 0; y < 200; y++) {
+			memcpy(screen_addr, src, 160);
+			screen_addr += 160;
+			memcpy(screen_addr, src, 160);
+			screen_addr += 160;
+			src += 160;
+		}
+	}
+
 	_kernel_osbyte(OSByte_WriteDisplayScreenBank, new_page, 0);
 	_kernel_osbyte(OSByte_Vsync, 0, 0);
 	last_page = new_page;
@@ -199,6 +236,10 @@ void ArcStub::updateDisplay(const uint8_t *src, uint8_t pageId) {
 
 bool ArcStub::getVideoPages(uint8_t *pages[4])
 {
+	if (use_vga) {
+		return false;
+	}
+
 	const uint32_t vdu_variables_in[] = {148, -1};
 	uint8_t *screen_addr = 0;
 
@@ -211,18 +252,26 @@ bool ArcStub::getVideoPages(uint8_t *pages[4])
 	// Add an offset to centre the pages on the screen
 	uint32_t offset = ((256 - 200) / 2) * 160;
 
-	pages[1] = screen_addr + offset;
-	pages[2] = screen_addr + offset + 160*256;
+	if (use_vga) {
+		pages[1] = screen_addr + offset;
+		pages[2] = screen_addr + offset + 160*480;
 
-	pages[0] = screen_addr + 160*256*2;
-	pages[3] = screen_addr + 160*256*2 + 160*200;
+		pages[0] = screen_addr + 160*480*2;
+		pages[3] = screen_addr + 160*480*2 + 160*200;
+	} else {
+		pages[1] = screen_addr + offset;
+		pages[2] = screen_addr + offset + 160*256;
+
+		pages[0] = screen_addr + 160*256*2;
+		pages[3] = screen_addr + 160*256*2 + 160*200;
+	}
 
 	return true;
 }
 
 bool ArcStub::keyDown(uint8_t key)
 {
-	uint32_t ret = _kernel_osbyte(129, key ^ 0xff, 0xff);
+	uint32_t ret = _kernel_osbyte(OSByte_KeyboardScan, key ^ 0xff, 0xff);
 
 	return ((ret & 0xffff) == 0xffff);
 }
