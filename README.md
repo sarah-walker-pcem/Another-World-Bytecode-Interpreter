@@ -8,7 +8,7 @@ This is a port of NEO-RAW, Fabien Sanglard's updated & cleaned up version of Gre
 Requirements:
 -------------
 
-ARM2 or better, 2 MB RAM, RISC OS 3, hard drive or high density floppies.
+ARM2 or better, 2 MB RAM, RISC OS 3, hard drive or high density floppies. VGA displays, joysticks and RISC OS 5 are supported.
 
 Building requires [GCCSDK](http://www.riscos.info/index.php/GCCSDK).
 
@@ -32,8 +32,9 @@ Copy the data files from the DOS version of the game (BANK* and MEMLIST.BIN) to 
 
 Controls:
 ---------
-- Arrow keys to move
-- SPACE to fire/perform action
+
+- Arrow keys or joystick to move
+- SPACE or joystick button to fire/perform action
 - C to enter level code
 - Escape to quit
 
@@ -41,8 +42,6 @@ TODO:
 -----
 
 - Restore save game support (zlib)
-- Support for 32-bit machines
-- Support for VGA displays
 - High resolution rendering
 - Support running from 800k floppies
 
