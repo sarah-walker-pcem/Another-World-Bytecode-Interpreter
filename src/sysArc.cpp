@@ -95,6 +95,9 @@ struct ArcStub : System {
 
 	bool use_joystick;
 	bool use_vga;
+	bool use_32bpp;
+
+	uint32_t palette[16];
 };
 
 extern void *tickerv_handler;
@@ -103,13 +106,14 @@ extern uint32_t *callback_register_buffer;
 
 static const uint32_t videoSize = 160*256*2 + 160*200*2;
 static const uint32_t videoSizeVga = 160*480*2;
+static const uint32_t videoSize32bpp = 640*480*4*2;
 
 void ArcStub::initVideoMemory()
 {
 	const uint32_t vdu_variables_in[] = {148, -1};
 	uint32_t *screen_addr = 0;
 	uint32_t area_size;
-	uint32_t video_size = use_vga ? videoSizeVga : videoSize;
+	uint32_t video_size = use_32bpp ? videoSize32bpp : (use_vga ? videoSizeVga : videoSize);
 
 	// Read old screen size
 	_swi(OS_ReadDynamicArea, _IN(0) | _OUT(1), 2, &area_size);
@@ -128,6 +132,15 @@ void ArcStub::init(const char *title) {
 	struct sigaction sigint_action;
 	const uint8_t mode_string[] = {22, 9, 23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 	const uint8_t vga_mode_string[] = {22, 48, 23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	const uint8_t cursor_off_string[] = {23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	const uint32_t mode_640x480x32[] = {
+		0x00000001, // flags
+		640,
+		480,
+		5, // 32 bpp
+		-1,
+		-1
+	};
 	uint8_t riscos_version;
 
 	// Disable SIGINT (Escape)
@@ -137,9 +150,14 @@ void ArcStub::init(const char *title) {
 	memset(timers, 0, sizeof(timers));
 
 	last_page = 2;
+	use_32bpp = false;
 
 	riscos_version = _kernel_osbyte(OSByte_KeyboardScan, 0, 0xff) & 0xff;
-	if (riscos_version >= 0xa5) {
+	if (riscos_version >= 0xaa) {
+		// RISC OS 5 or later. Assume upscaling to 640x480x32
+		use_32bpp = true;
+		use_vga = true;
+	} if (riscos_version >= 0xa5) {
 		// RISC OS 3.5 or later (RiscPC hardware and later), use VGA modes
 		use_vga = true;
 	} else {
@@ -149,8 +167,14 @@ void ArcStub::init(const char *title) {
 		use_vga = (monitor_type == 3 || monitor_type == 4 || monitor_type == 5);
 	}
 
-	for (int i = 0; i < sizeof(mode_string); i++)
-		_kernel_oswrch(use_vga ? vga_mode_string[i] : mode_string[i]);
+	if (use_32bpp) {
+		_swi(OS_ScreenMode, _INR(0,1), 0, mode_640x480x32);
+		for (int i = 0; i < sizeof(cursor_off_string); i++)
+			_kernel_oswrch(cursor_off_string[i]);
+	} else {
+		for (int i = 0; i < sizeof(mode_string); i++)
+			_kernel_oswrch(use_vga ? vga_mode_string[i] : mode_string[i]);
+	}
 
 	initVideoMemory();
 
@@ -179,20 +203,35 @@ void ArcStub::destroy() {
 
 void ArcStub::setPalette(const uint8_t *p) {
   // The incoming palette is in 565 format.
-	uint8_t palette_block[5] = {0, 16, 0, 0, 0};
+	if (use_32bpp) {
+		for (int i = 0; i < 16; i++)
+		{
+			uint8_t c1 = *(p + 0);
+			uint8_t c2 = *(p + 1);
+			p += 2;
 
-	for (int i = 0; i < 16; i++)
-	{
-		palette_block[0] = i;
-    		uint8_t c1 = *(p + 0);
-		uint8_t c2 = *(p + 1);
-		p += 2;
+			int r = (((c1 & 0x0F) << 2) | ((c1 & 0x0F) >> 2)) << 2; // r
+			int g = (((c2 & 0xF0) >> 2) | ((c2 & 0xF0) >> 6)) << 2; // g
+			int b = (((c2 & 0x0F) >> 2) | ((c2 & 0x0F) << 2)) << 2; // b
 
-		palette_block[2] = (((c1 & 0x0F) << 2) | ((c1 & 0x0F) >> 2)) << 2; // r
-    		palette_block[3] = (((c2 & 0xF0) >> 2) | ((c2 & 0xF0) >> 6)) << 2; // g
-		palette_block[4] = (((c2 & 0x0F) >> 2) | ((c2 & 0x0F) << 2)) << 2; // b
+			palette[i] = (b << 16) | (g << 8) | r;
+		}
+	} else {
+		uint8_t palette_block[5] = {0, 16, 0, 0, 0};
 
-		_kernel_osword(0xc, (int *)palette_block);
+		for (int i = 0; i < 16; i++)
+		{
+			palette_block[0] = i;
+			uint8_t c1 = *(p + 0);
+			uint8_t c2 = *(p + 1);
+			p += 2;
+
+			palette_block[2] = (((c1 & 0x0F) << 2) | ((c1 & 0x0F) >> 2)) << 2; // r
+			palette_block[3] = (((c2 & 0xF0) >> 2) | ((c2 & 0xF0) >> 6)) << 2; // g
+			palette_block[4] = (((c2 & 0x0F) >> 2) | ((c2 & 0x0F) << 2)) << 2; // b
+
+			_kernel_osword(0xc, (int *)palette_block);
+		}
 	}
 }
 
@@ -211,7 +250,37 @@ void ArcStub::updateDisplay(const uint8_t *src, uint8_t pageId) {
 		break;
 	}
 
-	if (use_vga) {
+	if (use_32bpp) {
+		const uint32_t vdu_variables_in[] = {148, -1};
+		uint32_t *screen_addr = 0;
+		uint32_t *screen_addr2 = 0;
+
+		_kernel_osbyte(OSByte_WriteVDUScreenBank, new_page, 0);
+		_swi(OS_ReadVduVariables, _IN(0) | _IN(1), &vdu_variables_in, &screen_addr);
+		screen_addr += 40*640;
+		screen_addr2 = screen_addr + 640;
+
+		for (int y = 0; y < 200; y++) {
+			for (int x = 0; x < 320; x += 2) {
+				uint32_t col;
+				uint8_t dat = *src++;
+
+				col = palette[dat & 0xf];
+				*screen_addr++ = col;
+				*screen_addr++ = col;
+				*screen_addr2++ = col;
+				*screen_addr2++ = col;
+
+				col = palette[dat >> 4];
+				*screen_addr++ = col;
+				*screen_addr++ = col;
+				*screen_addr2++ = col;
+				*screen_addr2++ = col;
+			}
+			screen_addr += 640;
+			screen_addr2 += 640;
+		}
+	} else if (use_vga) {
 		const uint32_t vdu_variables_in[] = {148, -1};
 		uint8_t *screen_addr = 0;
 
