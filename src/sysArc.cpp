@@ -142,6 +142,7 @@ void ArcStub::init(const char *title) {
 		-1
 	};
 	uint8_t riscos_version;
+	bool has_mode48;
 
 	// Disable SIGINT (Escape)
 	sigint_action.sa_handler = SIG_IGN;
@@ -153,18 +154,20 @@ void ArcStub::init(const char *title) {
 	use_32bpp = false;
 
 	riscos_version = _kernel_osbyte(OSByte_KeyboardScan, 0, 0xff) & 0xff;
-	if (riscos_version >= 0xaa) {
-		// RISC OS 5 or later. Assume upscaling to 640x480x32
-		use_32bpp = true;
-		use_vga = true;
-	} if (riscos_version >= 0xa5) {
+	has_mode48 = !(_swi(OS_CheckModeValid, _IN(0)|_RETURN(_FLAGS), 48) & _C);
+
+	if (riscos_version >= 0xa5) {
 		// RISC OS 3.5 or later (RiscPC hardware and later), use VGA modes
 		use_vga = true;
+
+		// Use upscaling to 640x480x32 if 16 colour support is unavailable (e.g. Raspberry Pi)
+		if (!has_mode48)
+			use_32bpp = true;
 	} else {
 		int monitor_type = (_kernel_osbyte(OSByte_ReadCMOSRAM, 133, 0) >> 10) & 0x1f;
 
-		// Use VGA modes on VGA, SVGA and LCD monitor types
-		use_vga = (monitor_type == 3 || monitor_type == 4 || monitor_type == 5);
+		// Use VGA modes on VGA, SVGA and LCD monitor types if GameModes is available
+		use_vga = (monitor_type == 3 || monitor_type == 4 || monitor_type == 5) && has_mode48;
 	}
 
 	if (use_32bpp) {
