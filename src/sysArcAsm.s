@@ -144,10 +144,12 @@ callback_handler32:
 
 	
 skip_callback32:
+	ADR 	r14, callback_register_buffer
+
+	LDR	r0, [r14, #16*4]
+	MSR	spsr, r0
 	LDMIA	r14, {r0-r14}^
 	MOV	r0, r0
-	LDR	r14, [r14, #16*4]
-	MSR	spsr, r14
 	LDR	r14, [r14, #15*4]
 	MOVS	pc, r14
 
