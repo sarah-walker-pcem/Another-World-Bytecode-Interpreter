@@ -1,17 +1,20 @@
 CPP  = ~/gccsdk/cross/bin/arm-unknown-riscos-g++
 ELF2AIF = ~/gccsdk/cross/bin/elf2aif
 
-CXXFLAGS = -mcpu=arm6 -O3 -DSYS_LITTLE_ENDIAN -DBYPASS_PROTECTION -DVIDEO_LITTLE_ENDIAN -DUSE_ASM_PLOT_CODE
+CXXFLAGS = -mcpu=arm6 -g -O3 -DSYS_LITTLE_ENDIAN -DBYPASS_PROTECTION -DVIDEO_LITTLE_ENDIAN -DUSE_ASM_PLOT_CODE
 OBJ = bank.o engine.o file.o main.o mixerArc.o mixerArcAsm.o parts.o resource.o serializer.o sfxplayer.o staticres.o sysArc.o sysArcAsm.o util.o video.o videoArc.o vm.o
 
-!RunImage,ff8: $(OBJ)
-	$(CPP) $(CXXFLAGS) $(OBJ) -static -o "!RunImage,ff8"
-	$(ELF2AIF) "!RunImage,ff8"
+!RunImage,ff8: !RunImage,e1f
+	$(ELF2AIF) $< $@
+
+!RunImage,e1f: $(OBJ)
+	$(CPP) $(CXXFLAGS) $(OBJ) -static -o $@
 
 all : !RunImage,ff8
 
 clean :
 	rm *.o
+	rm !RunImage,e1f
 	rm !RunImage,ff8
 
 %.o : %.cpp
