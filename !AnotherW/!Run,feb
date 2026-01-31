@@ -1,2 +1,5 @@
 Set AnotherWorld$Dir <Obey$Dir>
+RMEnsure UtilityModule 3.50 RMEnsure GameModes 0.00 RMLoad System:Modules.GameModes
+RMEnsure UtilityModule 5.00 RMEnsure CallASWI 0.19 RMLoad System:Modules.CallASWI
+RMEnsure SharedUnixLibrary 1.16 RMLoad System:Modules.SharedULib
 Run <AnotherWorld$Dir>.!RunImage
