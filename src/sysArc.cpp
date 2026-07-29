@@ -77,10 +77,14 @@ struct ArcStub : System {
 	virtual void unlockMutex(void *mutex);
 	virtual void getDefaultDataDir(const char **path);
 	virtual bool getVideoPages(uint8_t *pages[4]);
+	virtual void getVideoSize(int *w, int *h, int *pitch);
 
 	bool keyDown(uint8_t key);
 	void timerCallback();
 	void initVideoMemory();
+
+	int loadConfig();
+	void defaultConfig();
 
 	char *AnotherWorldDir;
 	char AnotherWorldDataDir[256];
@@ -98,18 +102,31 @@ struct ArcStub : System {
 	bool use_32bpp;
 
 	uint32_t palette[16];
+
+	int width;
+	int height;
+	int width_real;
+	int height_real;
 };
 
 extern void *tickerv_handler;
 extern void *callback_handler;
 extern uint32_t *callback_register_buffer;
 
-static const uint32_t videoSize = 160*256*2 + 160*200*2;
-static const uint32_t videoSizeVga = 160*480*2;
+static uint32_t videoSize = 320*480*2;
+static uint32_t videoSizeVga = 160*480*2;
 static const uint32_t videoSize32bpp = 640*480*4*2;
+
+static uint32_t backBufferSize = 320*400*2;
+
+static uint8_t *backbuffers;
 
 void ArcStub::initVideoMemory()
 {
+	videoSize = width*height*2 / 2;
+	videoSizeVga = width*480*2 / 2;
+	backBufferSize = width*height_real*2 / 2;
+
 	const uint32_t vdu_variables_in[] = {148, -1};
 	uint32_t *screen_addr = 0;
 	uint32_t area_size;
@@ -126,13 +143,56 @@ void ArcStub::initVideoMemory()
 	// Clear out video memory
 	_swi(OS_ReadVduVariables, _IN(0) | _IN(1), &vdu_variables_in, &screen_addr);
 	memset(screen_addr, 0, video_size);
+
+	backbuffers = (uint8_t *)malloc(backBufferSize);
+	memset(backbuffers, 0, backBufferSize);
+}
+
+int ArcStub::loadConfig()
+{
+	char configPath[256];
+	char s[256];
+
+	snprintf(configPath, sizeof(configPath), "%s/config", AnotherWorldDir);
+
+	FILE *f = fopen(configPath, "rt");
+	if (!f)
+		return -1;
+
+	do {
+		fgets(s, sizeof(s), f);
+		if (feof(f))
+			break;
+
+		if (!strncmp(s, "res_x=", sizeof("res_x=") - 1)) {
+			width = atoi(s + sizeof("res_x=") - 1);
+		} else if (!strncmp(s, "res_y=", sizeof("res_y=") - 1)) {
+			height = atoi(s + sizeof("res_y=") - 1);
+		}
+
+	} while (1);
+
+	return 0;
+}
+
+void ArcStub::defaultConfig()
+{
+	width = 320;
+	height = 256;
 }
 
 void ArcStub::init(const char *title) {
 	struct sigaction sigint_action;
-	const uint8_t mode_string[] = {22, 9, 23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-	const uint8_t vga_mode_string[] = {22, 48, 23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	uint8_t mode_string[] = {22, 9, 23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 	const uint8_t cursor_off_string[] = {23, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	uint32_t mode_4bpp[] = {
+		0x00000001, // flags
+		640,
+		480,
+		2, // 4 bpp
+		-1,
+		-1
+	};
 	const uint32_t mode_640x480x32[] = {
 		0x00000001, // flags
 		640,
@@ -143,6 +203,12 @@ void ArcStub::init(const char *title) {
 	};
 	uint8_t riscos_version;
 	bool has_mode48;
+
+	defaultConfig();
+	loadConfig();
+
+	width_real = (width / 320) * 320;
+	height_real = (height / 200) * 200;
 
 	// Disable SIGINT (Escape)
 	sigint_action.sa_handler = SIG_IGN;
@@ -158,7 +224,15 @@ void ArcStub::init(const char *title) {
 
 	if (riscos_version >= 0xa5) {
 		// RISC OS 3.5 or later (RiscPC hardware and later), use VGA modes
-		use_vga = true;
+		use_vga = height <= 256;
+
+		if (use_vga) {
+			mode_4bpp[1] = width;
+			mode_4bpp[2] = 480;
+		} else {
+			mode_4bpp[1] = width;
+			mode_4bpp[2] = height;
+		}
 
 		// Use upscaling to 640x480x32 if 16 colour support is unavailable (e.g. Raspberry Pi)
 		if (!has_mode48)
@@ -168,15 +242,28 @@ void ArcStub::init(const char *title) {
 
 		// Use VGA modes on VGA, SVGA and LCD monitor types if GameModes is available
 		use_vga = (monitor_type == 3 || monitor_type == 4 || monitor_type == 5) && has_mode48;
+
+		if (width == 320 && height == 256)
+			mode_string[1] = use_vga ? 48 : 9;
+		else if (width == 640 && height == 256)
+			mode_string[1] = use_vga ? 27 : 12;
+		else if (width == 640 && height == 480)
+			mode_string[1] = 27;
+		else if (width == 320 && height == 480)
+			mode_string[1] = 48;
 	}
 
 	if (use_32bpp) {
 		_swi(OS_ScreenMode, _INR(0,1), 0, mode_640x480x32);
 		for (int i = 0; i < sizeof(cursor_off_string); i++)
 			_kernel_oswrch(cursor_off_string[i]);
+	} else if (riscos_version >= 0xa5) {
+		_swi(OS_ScreenMode, _INR(0,1), 0, mode_4bpp);
+		for (int i = 0; i < sizeof(cursor_off_string); i++)
+			_kernel_oswrch(cursor_off_string[i]);
 	} else {
 		for (int i = 0; i < sizeof(mode_string); i++)
-			_kernel_oswrch(use_vga ? vga_mode_string[i] : mode_string[i]);
+			_kernel_oswrch(mode_string[i]);
 	}
 
 	initVideoMemory();
@@ -290,14 +377,16 @@ void ArcStub::updateDisplay(const uint8_t *src, uint8_t pageId) {
 		_kernel_osbyte(OSByte_WriteVDUScreenBank, new_page, 0);
 		_swi(OS_ReadVduVariables, _IN(0) | _IN(1), &vdu_variables_in, &screen_addr);
 
-		screen_addr += 40*160;
+		int offset = (480 - (height_real * 2)) / 2;
 
-		for (int y = 0; y < 200; y++) {
-			memcpy(screen_addr, src, 160);
-			screen_addr += 160;
-			memcpy(screen_addr, src, 160);
-			screen_addr += 160;
-			src += 160;
+		screen_addr += offset * width / 2;
+
+		for (int y = 0; y < height_real; y++) {
+			memcpy(screen_addr, src, width / 2);
+			screen_addr += width / 2;
+			memcpy(screen_addr, src, width / 2);
+			screen_addr += width / 2;
+			src += width / 2;
 		}
 	}
 
@@ -322,20 +411,21 @@ bool ArcStub::getVideoPages(uint8_t *pages[4])
 	// use screen-sized allocations for the back buffers
 	//
 	// Add an offset to centre the pages on the screen
-	uint32_t offset = ((256 - 200) / 2) * 160;
+	uint32_t x_offset = ((width - width_real) / 2) / 2;
+	uint32_t offset = ((height - height_real) / 2) * width / 2; //160;
 
 	if (use_vga) {
-		pages[1] = screen_addr + offset;
-		pages[2] = screen_addr + offset + 160*480;
+		pages[1] = screen_addr + x_offset + offset;
+		pages[2] = screen_addr + x_offset + offset + width*480 / 2;
 
-		pages[0] = screen_addr + 160*480*2;
-		pages[3] = screen_addr + 160*480*2 + 160*200;
+		pages[0] = backbuffers;
+		pages[3] = backbuffers + width*height_real / 2;
 	} else {
-		pages[1] = screen_addr + offset;
-		pages[2] = screen_addr + offset + 160*256;
+		pages[1] = screen_addr + x_offset + offset;
+		pages[2] = screen_addr + x_offset + offset + width*height / 2; //256; //160*256;
 
-		pages[0] = screen_addr + 160*256*2;
-		pages[3] = screen_addr + 160*256*2 + 160*200;
+		pages[0] = backbuffers;
+		pages[3] = backbuffers + width*height_real / 2;
 	}
 
 	return true;
@@ -516,6 +606,13 @@ void ArcStub::timerCallback() {
 			timers[i].next_callback += timers[i].interval;
 		}
 	}
+}
+
+void ArcStub::getVideoSize(int *w, int *h, int *pitch)
+{
+	*w = width_real;
+	*h = height_real;
+	*pitch = width;
 }
 
 ArcStub sysImplementation;

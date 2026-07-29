@@ -21,22 +21,21 @@
 #include "serializer.h"
 #include "sys.h"
 
-
-void Polygon::readVertices(const uint8_t *p, uint16_t zoom) {
-	bbw = (*p++) * zoom / 64;
-	bbh = (*p++) * zoom / 64;
+void Polygon::readVertices(const uint8_t *p, uint16_t zoom, int zoom_mul_x, int zoom_mul_y) {
+	bbw = (*p++) * zoom * zoom_mul_x / 64;
+	bbh = (*p++) * zoom * zoom_mul_y / 64;
 	numPoints = *p++;
 	assert((numPoints & 1) == 0 && numPoints < MAX_POINTS);
 
 	//Read all points, directly from bytecode segment
 	for (int i = 0; i < numPoints; ++i) {
 		Point *pt = &points[i];
-		pt->x = (*p++) * zoom / 64;
-		pt->y = (*p++) * zoom / 64;
+		pt->x = (*p++) * zoom * zoom_mul_x / 64;
+		pt->y = (*p++) * zoom * zoom_mul_y / 64;
 	}
 }
 
-Video::Video(Resource *resParameter, System *stub) 
+Video::Video(Resource *resParameter, System *stub)
 	: res(resParameter), sys(stub) {
 }
 
@@ -44,12 +43,18 @@ void Video::init() {
 
 	paletteIdRequested = NO_PALETTE_CHANGE_REQUESTED;
 
+	sys->getVideoSize(&width, &height, &pitch);
+
+	vid_page_size = pitch * height / 2;
+	zoom_mul_x = width / 320;
+	zoom_mul_y = height / 200;
+
 	if (!sys->getVideoPages(_pages)) {
-		uint8_t* tmp = (uint8_t *)malloc(4 * VID_PAGE_SIZE);
-		memset(tmp,0,4 * VID_PAGE_SIZE);
-	
+		uint8_t* tmp = (uint8_t *)malloc(4 * vid_page_size);
+		memset(tmp,0,4 * vid_page_size);
+
 		for (int i = 0; i < 4; ++i) {
-			_pages[i] = tmp + i * VID_PAGE_SIZE;
+			_pages[i] = tmp + i * vid_page_size;
 		}
 	}
 
@@ -83,20 +88,19 @@ void Video::setDataBuffer(uint8_t *dataBuf, uint16_t offset) {
 
 	 This is a recursive function. */
 void Video::readAndDrawPolygon(uint8_t color, uint16_t zoom, const Point &pt) {
-
 	uint8_t i = _pData.fetchByte();
 
-	//This is 
+	//This is
 	if (i >= 0xC0) {	// 0xc0 = 192
 
 		// WTF ?
 		if (color & 0x80) {   //0x80 = 128 (1000 0000)
-			color = i & 0x3F; //0x3F =  63 (0011 1111)   
+			color = i & 0x3F; //0x3F =  63 (0011 1111)
 		}
 
 		// pc is misleading here since we are not reading bytecode but only
 		// vertices informations.
-		polygon.readVertices(_pData.pc, zoom);
+		polygon.readVertices(_pData.pc, zoom, zoom_mul_x, zoom_mul_y);
 
 		fillPolygon(color, zoom, pt);
 
@@ -119,33 +123,36 @@ void Video::readAndDrawPolygon(uint8_t color, uint16_t zoom, const Point &pt) {
 }
 
 #ifdef USE_ASM_PLOT_CODE
-extern "C" void fillPolygonSegment(uint32_t h, int32_t cpt1, int32_t cpt2, uint32_t color, int32_t step1, int32_t step2, int32_t _hliney, uint8_t *_curPagePtr1, uint8_t *_pages0);
+extern "C" void fillPolygonSegment(uint32_t h, int32_t cpt1, int32_t cpt2, uint32_t color, int32_t step1, int32_t step2, int32_t _hliney, uint8_t *_curPagePtr1, uint8_t *_pages0, int width, int height, int pitch);
 #endif
 
 void Video::fillPolygon(uint16_t color, uint16_t zoom, const Point &pt) {
 
-	if (polygon.bbw == 0 && polygon.bbh == 1 && polygon.numPoints == 4) {
+	/*if (polygon.bbw == 0 && polygon.bbh == 1 && polygon.numPoints == 4) {
 		drawPoint(color, pt.x, pt.y);
 
 		return;
-	}
-	
+	}*/
+
 	int32_t x1 = pt.x - polygon.bbw / 2;
 	int32_t x2 = pt.x + polygon.bbw / 2;
 	int32_t y1 = pt.y - polygon.bbh / 2;
 	int32_t y2 = pt.y + polygon.bbh / 2;
 
-	if (x1 > 319 || x2 < 0 || y1 > 199 || y2 < 0)
+	if (x1 > (width-1) || x2 < 0 || y1 > (height-1) || y2 < 0)
 		return;
 
 	_hliney = y1;
-	
+
 	uint32_t i, j;
 	i = 0;
 	j = polygon.numPoints - 1;
-	
+
 	x2 = polygon.points[i].x + x1;
 	x1 = polygon.points[j].x + x1;
+
+	x2 += zoom_mul_x-1;
+	y2 += zoom_mul_y-1;
 
 	++i;
 	--j;
@@ -177,16 +184,16 @@ void Video::fillPolygon(uint16_t color, uint16_t zoom, const Point &pt) {
 		cpt1 = (cpt1 & 0xFFFF0000) | 0x7FFF;
 		cpt2 = (cpt2 & 0xFFFF0000) | 0x8000;
 
-		if (h == 0) {	
+		if (h == 0) {
 			cpt1 += step1;
 			cpt2 += step2;
 		} else {
 #ifdef USE_ASM_PLOT_CODE
-			fillPolygonSegment(h, cpt1, cpt2, color, step1, step2, _hliney, _curPagePtr1, _pages[0]);
+			fillPolygonSegment(h, cpt1, cpt2, color, step1, step2, _hliney, _curPagePtr1, _pages[0], width/2, height, pitch/2);
 			cpt1 += step1 * h;
 			cpt2 += step2 * h;
 			_hliney += h;
-			if (_hliney > 199) return;
+			if (_hliney > (height-1)) return;
 #else
 			for (; h != 0; --h) {
 				if (_hliney >= 0) {
@@ -200,7 +207,7 @@ void Video::fillPolygon(uint16_t color, uint16_t zoom, const Point &pt) {
 				}
 				cpt1 += step1;
 				cpt2 += step2;
-				++_hliney;					
+				++_hliney;
 				if (_hliney > 199) return;
 			}
 #endif
@@ -220,8 +227,8 @@ void Video::fillPolygon(uint16_t color, uint16_t zoom, const Point &pt) {
 void Video::readAndDrawPolygonHierarchy(uint16_t zoom, const Point &pgc) {
 
 	Point pt(pgc);
-	pt.x -= _pData.fetchByte() * zoom / 64;
-	pt.y -= _pData.fetchByte() * zoom / 64;
+	pt.x -= _pData.fetchByte() * zoom * zoom_mul_x / 64;
+	pt.y -= _pData.fetchByte() * zoom * zoom_mul_y / 64;
 
 	int16_t childs = _pData.fetchByte();
 	debug(DBG_VIDEO, "Video::readAndDrawPolygonHierarchy childs=%d", childs);
@@ -231,8 +238,8 @@ void Video::readAndDrawPolygonHierarchy(uint16_t zoom, const Point &pgc) {
 		uint16_t off = _pData.fetchWord();
 
 		Point po(pt);
-		po.x += _pData.fetchByte() * zoom / 64;
-		po.y += _pData.fetchByte() * zoom / 64;
+		po.x += _pData.fetchByte() * zoom * zoom_mul_x / 64;
+		po.y += _pData.fetchByte() * zoom * zoom_mul_y / 64;
 
 		uint16_t color = 0xFF;
 		uint16_t _bp = off;
@@ -253,7 +260,7 @@ void Video::readAndDrawPolygonHierarchy(uint16_t zoom, const Point &pgc) {
 		_pData.pc = bak;
 	}
 
-	
+
 }
 
 int32_t Video::calcStep(const Point &p1, const Point &p2, uint32_t &dy) {
@@ -266,15 +273,15 @@ void Video::drawString(uint8_t color, uint32_t x, uint32_t y, uint16_t stringId)
 	const StrEntry *se = _stringsTableEng;
 
 	//Search for the location where the string is located.
-	while (se->id != END_OF_STRING_DICTIONARY && se->id != stringId) 
+	while (se->id != END_OF_STRING_DICTIONARY && se->id != stringId)
 		++se;
-	
+
 	debug(DBG_VIDEO, "drawString(%d, %d, %d, '%s')", color, x, y, se->str);
 
 	//Not found
 	if (se->id == END_OF_STRING_DICTIONARY)
 		return;
-	
+
 
     //Used if the string contains a return carriage.
 	uint32_t xOrigin = x;
@@ -285,82 +292,93 @@ void Video::drawString(uint8_t color, uint32_t x, uint32_t y, uint16_t stringId)
 			y += 8;
 			x = xOrigin;
 			continue;
-		} 
-		
+		}
+
 		drawChar(se->str[i], x, y, color, _curPagePtr1);
 		x++;
-		
+
 	}
 }
 
 void Video::drawChar(uint8_t character, uint32_t x, uint32_t y, uint8_t color, uint8_t *buf) {
 	if (x <= 39 && y <= 192) {
-		
+
 		const uint8_t *ft = _font + (character - ' ') * 8;
 
-		uint8_t *p = buf + x * 4 + y * 160;
+		uint8_t *p = buf + x * zoom_mul_x * 4 + y * zoom_mul_y * pitch/2;
 
 		for (int j = 0; j < 8; ++j) {
-			uint8_t ch = *(ft + j);
-			for (int i = 0; i < 4; ++i) {
-				uint8_t b = *(p + i);
-				uint8_t cmask = 0xFF;
-				uint8_t colb = 0;
-				if (ch & 0x80) {
+			for (int l = 0; l < zoom_mul_y; l++) {
+				uint8_t ch = *(ft + j);
+
+				int x_off = 0;
+				for (int i = 0; i < 8; ++i) {
+					for (int k = 0; k < zoom_mul_x; k++) {
+						uint8_t b = *(p + (x_off >> 1));
+						uint8_t cmask = 0xFF;
+						uint8_t colb = 0;
+						if (ch & 0x80) {
+							if (x_off & 1) {
 #ifdef VIDEO_LITTLE_ENDIAN
-					colb |= color;
-					cmask &= 0xF0;
+								colb |= color << 4;
+								cmask &= 0x0F;
 #else
-					colb |= color << 4;
-					cmask &= 0x0F;
+								colb |= color;
+								cmask &= 0xF0;
 #endif
-				}
-				ch <<= 1;
-				if (ch & 0x80) {
+							} else {
 #ifdef VIDEO_LITTLE_ENDIAN
-					colb |= color << 4;
-					cmask &= 0x0F;
+								colb |= color;
+								cmask &= 0xF0;
 #else
-					colb |= color;
-					cmask &= 0xF0;
+								colb |= color << 4;
+								cmask &= 0x0F;
 #endif
+							}
+						}
+						*(p + (x_off >> 1)) = (b & cmask) | colb;
+						x_off++;
+					}
+					ch <<= 1;
 				}
-				ch <<= 1;
-				*(p + i) = (b & cmask) | colb;
+				p += pitch/2; //160;
 			}
-			p += 160;
 		}
 	}
 }
 
 void Video::drawPoint(uint8_t color, int32_t x, int32_t y) {
 	debug(DBG_VIDEO, "drawPoint(%d, %d, %d)", color, x, y);
-	if (x >= 0 && x <= 319 && y >= 0 && y <= 199) {
-		uint32_t off = y * 160 + x / 2;
-	
-		uint8_t cmasko, cmaskn;
-#ifdef VIDEO_LITTLE_ENDIAN
-		if (!(x & 1)) {
-#else
-		if (x & 1) {
-#endif
-			cmaskn = 0x0F;
-			cmasko = 0xF0;
-		} else {
-			cmaskn = 0xF0;
-			cmasko = 0x0F;
-		}
+	if (x >= 0 && x <= 319 * zoom_mul_x && y >= 0 && y <= 199) {
+		uint32_t off_base = y * pitch/2;
 
-		uint8_t colb = (color << 4) | color;
-		if (color == 0x10) {
-			cmaskn &= 0x88;
-			cmasko = ~cmaskn;
-			colb = 0x88;		
-		} else if (color == 0x11) {
-			colb = *(_pages[0] + off);
+		for (int i = 0; i < zoom_mul_x; i++) {
+			uint32_t off = off_base + x / 2;
+			uint8_t cmasko, cmaskn;
+#ifdef VIDEO_LITTLE_ENDIAN
+			if (!(x & 1)) {
+#else
+			if (x & 1) {
+#endif
+				cmaskn = 0x0F;
+				cmasko = 0xF0;
+			} else {
+				cmaskn = 0xF0;
+				cmasko = 0x0F;
+			}
+
+			uint8_t colb = (color << 4) | color;
+			if (color == 0x10) {
+				cmaskn &= 0x88;
+				cmasko = ~cmaskn;
+				colb = 0x88;
+			} else if (color == 0x11) {
+				colb = *(_pages[0] + off);
+			}
+			uint8_t b = *(_curPagePtr1 + off);
+			*(_curPagePtr1 + off) = (b & cmasko) | (colb & cmaskn);
+			x++;
 		}
-		uint8_t b = *(_curPagePtr1 + off);
-		*(_curPagePtr1 + off) = (b & cmasko) | (colb & cmaskn);
 	}
 }
 
@@ -370,11 +388,11 @@ void Video::drawLineBlend(int32_t x1, int32_t x2, uint8_t color) {
 	debug(DBG_VIDEO, "drawLineBlend(%d, %d, %d)", x1, x2, color);
 	int32_t xmax = MAX(x1, x2);
 	int32_t xmin = MIN(x1, x2);
-	uint8_t *p = _curPagePtr1 + _hliney * 160 + xmin / 2;
+	uint8_t *p = _curPagePtr1 + _hliney * pitch/2 + xmin / 2;
 
 	uint32_t w = xmax / 2 - xmin / 2 + 1;
 	uint8_t cmaske = 0;
-	uint8_t cmasks = 0;	
+	uint8_t cmasks = 0;
 	if (xmin & 1) {
 		--w;
 #ifdef VIDEO_LITTLE_ENDIAN
@@ -420,11 +438,11 @@ void Video::drawLineN(int32_t x1, int32_t x2, uint8_t color) {
 	debug(DBG_VIDEO, "drawLineN(%d, %d, %d)", x1, x2, color);
 	int32_t xmax = MAX(x1, x2);
 	int32_t xmin = MIN(x1, x2);
-	uint8_t *p = _curPagePtr1 + _hliney * 160 + xmin / 2;
+	uint8_t *p = _curPagePtr1 + _hliney * pitch/2 + xmin / 2;
 
 	uint32_t w = xmax / 2 - xmin / 2 + 1;
 	uint8_t cmaske = 0;
-	uint8_t cmasks = 0;	
+	uint8_t cmasks = 0;
 	if (xmin & 1) {
 		--w;
 #ifdef VIDEO_LITTLE_ENDIAN
@@ -442,7 +460,7 @@ void Video::drawLineN(int32_t x1, int32_t x2, uint8_t color) {
 #endif
 	}
 
-	uint8_t colb = ((color & 0xF) << 4) | (color & 0xF);	
+	uint8_t colb = ((color & 0xF) << 4) | (color & 0xF);
 	if (cmasks != 0) {
 #ifdef VIDEO_LITTLE_ENDIAN
 		*p = (*p & cmasks) | (colb & 0xF0);
@@ -460,23 +478,23 @@ void Video::drawLineN(int32_t x1, int32_t x2, uint8_t color) {
 #else
 		*p = (*p & cmaske) | (colb & 0xF0);
 #endif
-		++p;		
+		++p;
 	}
 
-	
+
 }
 
 void Video::drawLineP(int32_t x1, int32_t x2, uint8_t color) {
 	debug(DBG_VIDEO, "drawLineP(%d, %d, %d)", x1, x2, color);
 	int32_t xmax = MAX(x1, x2);
 	int32_t xmin = MIN(x1, x2);
-	uint32_t off = _hliney * 160 + xmin / 2;
+	uint32_t off = _hliney * pitch/2 + xmin / 2;
 	uint8_t *p = _curPagePtr1 + off;
 	uint8_t *q = _pages[0] + off;
 
 	uint32_t w = xmax / 2 - xmin / 2 + 1;
 	uint8_t cmaske = 0;
-	uint8_t cmasks = 0;	
+	uint8_t cmasks = 0;
 	if (xmin & 1) {
 		--w;
 #ifdef VIDEO_LITTLE_ENDIAN
@@ -504,7 +522,7 @@ void Video::drawLineP(int32_t x1, int32_t x2, uint8_t color) {
 		++q;
 	}
 	while (w--) {
-		*p++ = *q++;			
+		*p++ = *q++;
 	}
 	if (cmaske != 0) {
 #ifdef VIDEO_LITTLE_ENDIAN
@@ -556,13 +574,12 @@ void Video::fillPage(uint8_t pageId, uint8_t color) {
 	// clearing color to the upper part of the byte.
 	uint8_t c = (color << 4) | color;
 
-	memset(p, c, VID_PAGE_SIZE);
+	memset(p, c, vid_page_size);
 }
 
 /*  This opcode is used once the background of a scene has been drawn in one of the framebuffer:
 	   it is copied in the current framebuffer at the start of a new frame in order to improve performances. */
 void Video::copyPage(uint8_t srcPageId, uint8_t dstPageId, int16_t vscroll) {
-
 	debug(DBG_VIDEO, "Video::copyPage(%d, %d)", srcPageId, dstPageId);
 
 	if (srcPageId == dstPageId)
@@ -574,8 +591,7 @@ void Video::copyPage(uint8_t srcPageId, uint8_t dstPageId, int16_t vscroll) {
 	if (srcPageId >= 0xFE || !((srcPageId &= 0xBF) & 0x80)) {
 		p = getPage(srcPageId);
 		q = getPage(dstPageId);
-		memcpy(q, p, VID_PAGE_SIZE);
-			
+		memcpy(q, p, vid_page_size);
 	} else {
 		p = getPage(srcPageId & 3);
 		q = getPage(dstPageId);
@@ -583,12 +599,12 @@ void Video::copyPage(uint8_t srcPageId, uint8_t dstPageId, int16_t vscroll) {
 			uint16_t h = 200;
 			if (vscroll < 0) {
 				h += vscroll;
-				p += -vscroll * 160;
+				p += -vscroll * zoom_mul_y * pitch/2; //160;
 			} else {
 				h -= vscroll;
-				q += vscroll * 160;
+				q += vscroll * zoom_mul_y * pitch/2; //160;
 			}
-			memcpy(q, p, h * 160);
+			memcpy(q, p, h * width * zoom_mul_y / 2); //160);
 		}
 	}
 }
@@ -601,28 +617,51 @@ void Video::copyPage(const uint8_t *src) {
 	uint8_t *dst = _pages[0];
 	int h = 200;
 	while (h--) {
-		int w = 40;
-		while (w--) {
-			uint8_t p[] = {
-				*(src + 8000 * 3),
-				*(src + 8000 * 2),
-				*(src + 8000 * 1),
-				*(src + 8000 * 0)
-			};
-			for(int j = 0; j < 4; ++j) {
-				uint8_t acc = 0;
-				for (int i = 0; i < 8; ++i) {
-					acc <<= 1;
-					acc |= (p[i & 3] & 0x80) ? 1 : 0;
-					p[i & 3] <<= 1;
+		const uint8_t *src_backup = src;
+
+		for (int y_scale = 0; y_scale < zoom_mul_y; y_scale++) {
+			int w = 40;
+
+			src = src_backup;
+
+			while (w--) {
+				uint8_t p[] = {
+					*(src + 8000 * 3),
+					*(src + 8000 * 2),
+					*(src + 8000 * 1),
+					*(src + 8000 * 0)
+				};
+				for(int j = 0; j < 4; ++j) {
+					uint8_t acc = 0;
+					for (int i = 0; i < 8; ++i) {
+						acc <<= 1;
+						acc |= (p[i & 3] & 0x80) ? 1 : 0;
+						p[i & 3] <<= 1;
+					}
+
+					switch (zoom_mul_x) {
+					case 1:
+						*dst++ = (acc >> 4) | (acc << 4);
+						break;
+					case 2:
+						*dst++ = (acc >> 4) | (acc & 0xf0);
+						*dst++ = (acc & 0x0f) | (acc << 4);
+						break;
+					case 3:
+						*dst++ = (acc >> 4) | (acc & 0xf0);
+						*dst++ = (acc >> 4) | (acc << 4);
+						*dst++ = (acc & 0x0f) | (acc << 4);
+						break;
+					case 4:
+						*dst++ = (acc >> 4) | (acc & 0xf0);
+						*dst++ = (acc >> 4) | (acc & 0xf0);
+						*dst++ = (acc & 0x0f) | (acc << 4);
+						*dst++ = (acc & 0x0f) | (acc << 4);
+						break;
+					}
 				}
-#ifdef VIDEO_LITTLE_ENDIAN
-				*dst++ = (acc >> 4) | (acc << 4);
-#else
-				*dst++ = acc;
-#endif
+				++src;
 			}
-			++src;
 		}
 	}
 
@@ -638,7 +677,7 @@ void Video::changePal(uint8_t palNum) {
 
 	if (palNum >= 32)
 		return;
-	
+
 	uint8_t *p = res->segPalettes + palNum * 32; //colors are coded on 2bytes (565) for 16 colors = 32
 	sys->setPalette(p);
 	currentPaletteId = palNum;
@@ -678,16 +717,16 @@ void Video::saveOrLoad(Serializer &ser) {
 				mask |= i << 2;
 			if (_pages[i] == _curPagePtr3)
 				mask |= i << 0;
-		}		
+		}
 	}
 	Serializer::Entry entries[] = {
 		SE_INT(&currentPaletteId, Serializer::SES_INT8, VER(1)),
 		SE_INT(&paletteIdRequested, Serializer::SES_INT8, VER(1)),
 		SE_INT(&mask, Serializer::SES_INT8, VER(1)),
-		SE_ARRAY(_pages[0], Video::VID_PAGE_SIZE, Serializer::SES_INT8, VER(1)),
-		SE_ARRAY(_pages[1], Video::VID_PAGE_SIZE, Serializer::SES_INT8, VER(1)),
-		SE_ARRAY(_pages[2], Video::VID_PAGE_SIZE, Serializer::SES_INT8, VER(1)),
-		SE_ARRAY(_pages[3], Video::VID_PAGE_SIZE, Serializer::SES_INT8, VER(1)),
+		SE_ARRAY(_pages[0], Video::vid_page_size, Serializer::SES_INT8, VER(1)),
+		SE_ARRAY(_pages[1], Video::vid_page_size, Serializer::SES_INT8, VER(1)),
+		SE_ARRAY(_pages[2], Video::vid_page_size, Serializer::SES_INT8, VER(1)),
+		SE_ARRAY(_pages[3], Video::vid_page_size, Serializer::SES_INT8, VER(1)),
 		SE_END()
 	};
 	ser.saveOrLoadEntries(entries);

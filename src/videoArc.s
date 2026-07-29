@@ -2,7 +2,7 @@
 
 	.global fillPolygonSegment
 
-//	fillPolygonSegment(h, cpt1, cpt2, color, step1, step2, _hliney, _curPagePtr1, _pages[0])
+//	fillPolygonSegment(h, cpt1, cpt2, color, step1, step2, _hliney, _curPagePtr1, _pages[0], width, height)
 
 // a1 = h
 // a2 = cpt1
@@ -13,6 +13,9 @@
 // [sp+8] = _hliney
 // [sp+12] = write page
 // [sp+16] = read page
+// [sp+20] = width
+// [sp+24] = height
+// [sp+28] = pitch
 fillPolygonSegment:
 	CMP	a1, #0			// Skip if height is 0
 	MOVEQ	pc, lr
@@ -38,15 +41,16 @@ fillPolygonSegment:
 	MOV	v6, #0
 
 0:
+	LDR	v1, [sp, #(32 + 24)]	// Height
 	ADD	v5, v6, a1		// End line
-	RSBS	v5, v5, #200		// Lines from end of segment to end of screen
+	RSBS	v5, v5, v1		// Lines from end of segment to end of screen
 	ADDMI	a1, a1, v5		// Clip if necessary
 	CMP	a1, #0			// Any lines left?
 	LDMLEFD	sp!, {v1, v2, v3, v4, v5, v6, ip, pc}
 
 	LDR	ip, [sp, #(32 + 12)]	// Write page
-	ADD	ip, ip, v6, LSL #7
-	ADD	ip, ip, v6, LSL #5	// Pointer to start of first line
+	LDR	v1, [sp, #(32 + 28)]	// Pitch
+	MLA	ip, v1, v6, ip		// Pointer to start of first line
 
 	CMP	a4, #0x10
 	BCC	fillPolygonSegmentN
@@ -62,18 +66,19 @@ fillPolygonSegmentBlend:
 
 0:
 	STMDB	sp!, {a1, a2, a3}
+	LDR	v1, [sp, #(32 + 12 + 20)]	// Width
 	MOV	a2, a2, ASR #16
 	MOV	a3, a3, ASR #16
 
-	CMP	a2, #320	// Full line clip
+	CMP	a2, v1, LSL #1 //#320	// Full line clip
 	BGE	9f
 	CMP	a3, #0
 	BLT	9f
 
 	CMP	a2, #0
 	MOVLT	a2, #0
-	CMP	a3, #320
-	MOVGE	a3, #320
+	CMP	a3, v1, LSL #1 //#320
+	MOVGE	a3, v1, LSL #1 //#320
 	SUBGE	a3, a3, #1
 
 
@@ -108,7 +113,7 @@ fillPolygonSegmentBlend:
 
 	ADD	a2, a2, #7
 	BIC	a2, a2, #7
-	
+
 1:
 	MOV	v2, a4
 
@@ -167,7 +172,7 @@ fillPolygonSegmentBlendSameWord:
 	LDR	a2, [a3, a2, LSL #2]
 	AND	a2, a4, a2
 	ORR	v1, v1, a2
-	STR	v1, [a1]	
+	STR	v1, [a1]
 
 
 
@@ -177,9 +182,10 @@ fillPolygonSegmentBlendSameWord:
 	ADD	v5, sp, #32
 	LDMIA	v5, {v4, v5} 		// step1 & 2
 
+	LDR	v1, [sp, #(32 + 28)]	// Pitch
 	ADD	a2, a2, v4
 	ADD	a3, a3, v5
-	ADD	ip, ip, #160
+	ADD	ip, ip, v1 //#160
 
 	SUBS	a1, a1, #1
 	BNE	0b
@@ -196,18 +202,19 @@ fillPolygonSegmentN:
 
 0:
 	STMDB	sp!, {a1, a2, a3}
+	LDR	v1, [sp, #(32 + 12 + 20)]	// Width
 	MOV	a2, a2, ASR #16
 	MOV	a3, a3, ASR #16
 
-	CMP	a2, #320	// Full line clip
+	CMP	a2, v1, LSL #1 //#320	// Full line clip
 	BGE	9f
 	CMP	a3, #0
 	BLT	9f
 
 	CMP	a2, #0
 	MOVLT	a2, #0
-	CMP	a3, #320
-	MOVGE	a3, #320
+	CMP	a3, v1, LSL #1 //#320
+	MOVGE	a3, v1, LSL #1 //#320
 	SUBGE	a3, a3, #1
 
 
@@ -243,7 +250,7 @@ fillPolygonSegmentN:
 
 	ADD	a2, a2, #7
 	BIC	a2, a2, #7
-	
+
 1:
 	MOV	v2, a4
 
@@ -294,7 +301,7 @@ fillPolygonSegmentNSameWord:
 	BIC	v1, v1, a2
 	AND	a2, a4, a2
 	ORR	v1, v1, a2
-	STR	v1, [a1]	
+	STR	v1, [a1]
 
 
 
@@ -304,9 +311,10 @@ fillPolygonSegmentNSameWord:
 	ADD	v5, sp, #32
 	LDMIA	v5, {v4, v5} 		// step1 & 2
 
+	LDR	v1, [sp, #(32 + 28)]	// Pitch
 	ADD	a2, a2, v4
 	ADD	a3, a3, v5
-	ADD	ip, ip, #160
+	ADD	ip, ip, v1 //#160
 
 	SUBS	a1, a1, #1
 	BNE	0b
@@ -316,23 +324,23 @@ fillPolygonSegmentNSameWord:
 
 fillPolygonSegmentP:
 	LDR	v4, [sp, #(32+16)]	// Read page
-	ADD	v4, v4, v6, LSL #7
-	ADD	v4, v4, v6, LSL #5	// Pointer to start of first line
+	MLA	v4, v1, v6, v4		// Pointer to start of first line
 
 0:
 	STMDB	sp!, {a1, a2, a3, v4}
+	LDR	v1, [sp, #(32 + 16 + 20)]	// Width
 	MOV	a2, a2, ASR #16
 	MOV	a3, a3, ASR #16
 
-	CMP	a2, #320	// Full line clip
+	CMP	a2, v1, LSL #1 //#320	// Full line clip
 	BGE	9f
 	CMP	a3, #0
 	BLT	9f
 
 	CMP	a2, #0
 	MOVLT	a2, #0
-	CMP	a3, #320
-	MOVGE	a3, #320
+	CMP	a3, v1, LSL #1 //#320
+	MOVGE	a3, v1, LSL #1 //#320
 	SUBGE	a3, a3, #1
 
 
@@ -371,7 +379,7 @@ fillPolygonSegmentP:
 
 	ADD	a2, a2, #7
 	BIC	a2, a2, #7
-	
+
 1:
 	SUB	v1, a3, a2		// Width
 	CMP	v1, #32
@@ -422,7 +430,7 @@ fillPolygonSegmentPSameWord:
 	BIC	v1, v1, a2
 	AND	a2, a4, a2
 	ORR	v1, v1, a2
-	STR	v1, [a1]	
+	STR	v1, [a1]
 
 
 
@@ -432,10 +440,11 @@ fillPolygonSegmentPSameWord:
 	ADD	v5, sp, #32
 	LDMIA	v5, {v3, v5} 		// step1 & 2
 
+	LDR	v1, [sp, #(32 + 28)]	// Pitch
 	ADD	a2, a2, v3
 	ADD	a3, a3, v5
-	ADD	v4, v4, #160
-	ADD	ip, ip, #160
+	ADD	v4, v4, v1 //#160
+	ADD	ip, ip, v1 //#160
 
 	SUBS	a1, a1, #1
 	BNE	0b

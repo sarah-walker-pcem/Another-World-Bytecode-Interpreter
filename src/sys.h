@@ -49,7 +49,7 @@ struct PlayerInput {
 struct System {
 	typedef void (*AudioCallback)(void *param, uint8_t *stream, int len);
 	typedef uint32_t (*TimerCallback)(uint32_t delay, void *param);
-	
+
 	PlayerInput input;
 
 	virtual ~System() {}
@@ -67,7 +67,7 @@ struct System {
 	virtual void startAudio(AudioCallback callback, void *param) = 0;
 	virtual void stopAudio() = 0;
 	virtual uint32_t getOutputSampleRate() = 0;
-	
+
 	virtual int addTimer(uint32_t delay, TimerCallback callback, void *param) = 0;
 	virtual void removeTimer(int timerId) = 0;
 
@@ -79,13 +79,15 @@ struct System {
 	virtual void getDefaultDataDir(const char **path) = 0;
 
 	virtual bool getVideoPages(uint8_t *pages[4]) = 0;
+
+	virtual void getVideoSize(int *width, int *height, int *pitch) = 0;
 };
 
 struct MutexStack {
 	System *sys;
 	void *_mutex;
 
-	MutexStack(System *stub, void *mutex) 
+	MutexStack(System *stub, void *mutex)
 		: sys(stub), _mutex(mutex) {
 		sys->lockMutex(_mutex);
 	}

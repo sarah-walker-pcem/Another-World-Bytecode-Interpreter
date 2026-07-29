@@ -57,7 +57,7 @@ void VirtualMachine::op_movConst() {
 
 void VirtualMachine::op_mov() {
 	uint8_t dstVariableId = _scriptPtr.fetchByte();
-	uint8_t srcVariableId = _scriptPtr.fetchByte();	
+	uint8_t srcVariableId = _scriptPtr.fetchByte();
 	debug(DBG_VM, "VirtualMachine::op_mov(0x%02X, 0x%02X)", dstVariableId, srcVariableId);
 	vmVariables[dstVariableId] = vmVariables[srcVariableId];
 }
@@ -72,8 +72,8 @@ void VirtualMachine::op_add() {
 void VirtualMachine::op_addConst() {
 	if (res->currentPartId == 0x3E86 && _scriptPtr.pc == res->segBytecode + 0x6D48) {
 		warning("VirtualMachine::op_addConst() hack for non-stop looping gun sound bug");
-		// the script 0x27 slot 0x17 doesn't stop the gun sound from looping, I 
-		// don't really know why ; for now, let's play the 'stopping sound' like 
+		// the script 0x27 slot 0x17 doesn't stop the gun sound from looping, I
+		// don't really know why ; for now, let's play the 'stopping sound' like
 		// the other scripts do
 		//  (0x6D43) jmp(0x6CE5)
 		//  (0x6D46) break
@@ -104,7 +104,7 @@ void VirtualMachine::op_ret() {
 	debug(DBG_VM, "VirtualMachine::op_ret()");
 	if (_stackPtr == 0) {
 		error("VirtualMachine::op_ret() ec=0x%X stack underflow", 0x8F);
-	}	
+	}
 	--_stackPtr;
 	uint8_t sp = _stackPtr;
 	_scriptPtr.pc = res->segBytecode + _scriptStackCalls[sp];
@@ -118,7 +118,7 @@ void VirtualMachine::op_pauseThread() {
 void VirtualMachine::op_jmp() {
 	uint16_t pcOffset = _scriptPtr.fetchWord();
 	debug(DBG_VM, "VirtualMachine::op_jmp(0x%02X)", pcOffset);
-	_scriptPtr.pc = res->segBytecode + pcOffset;	
+	_scriptPtr.pc = res->segBytecode + pcOffset;
 }
 
 void VirtualMachine::op_setSetVect() {
@@ -393,12 +393,12 @@ void VirtualMachine::initForPart(uint16_t partId) {
 
 
 	memset((uint8_t *)vmIsChannelActive, 0, sizeof(vmIsChannelActive));
-	
+
 	int firstThreadId = 0;
-	threadsData[PC_OFFSET][firstThreadId] = 0;	
+	threadsData[PC_OFFSET][firstThreadId] = 0;
 }
 
-/* 
+/*
      This is called every frames in the infinite loop.
 */
 void VirtualMachine::checkThreadRequests() {
@@ -409,7 +409,7 @@ void VirtualMachine::checkThreadRequests() {
 		res->requestedNextPart = 0;
 	}
 
-	
+
 	// Check if a state update has been requested for any thread during the previous VM execution:
 	//      - Pause
 	//      - Jump
@@ -445,7 +445,7 @@ void VirtualMachine::hostFrame() {
 
 		if (vmIsChannelActive[CURR_STATE][threadId])
 			continue;
-		
+
 		uint16_t n = threadsData[PC_OFFSET][threadId];
 
 		if (n != VM_INACTIVE_THREAD) {
@@ -469,7 +469,7 @@ void VirtualMachine::hostFrame() {
 				break;
 			}
 		}
-		
+
 	}
 }
 
@@ -483,7 +483,7 @@ void VirtualMachine::executeThread() {
 		uint8_t opcode = _scriptPtr.fetchByte();
 
 		// 1000 0000 is set
-		if (opcode & 0x80) 
+		if (opcode & 0x80)
 		{
 			uint16_t off = ((opcode << 8) | _scriptPtr.fetchByte()) * 2;
 			res->_useSegVideo2 = false;
@@ -499,13 +499,13 @@ void VirtualMachine::executeThread() {
 			// This switch the polygon database to "cinematic" and probably draws a black polygon
 			// over all the screen.
 			video->setDataBuffer(res->segCinematic, off);
-			video->readAndDrawPolygon(COLOR_BLACK, DEFAULT_ZOOM, Point(x,y));
+			video->readAndDrawPolygon(COLOR_BLACK, DEFAULT_ZOOM, Point(x*video->zoom_mul_x, y*video->zoom_mul_y));
 
 			continue;
-		} 
+		}
 
 		// 0100 0000 is set
-		if (opcode & 0x40) 
+		if (opcode & 0x40)
 		{
 			int16_t x, y;
 			uint16_t off = _scriptPtr.fetchWord() * 2;
@@ -513,7 +513,7 @@ void VirtualMachine::executeThread() {
 
 			res->_useSegVideo2 = false;
 
-			if (!(opcode & 0x20)) 
+			if (!(opcode & 0x20))
 			{
 				if (!(opcode & 0x10))  // 0001 0000 is set
 				{
@@ -521,8 +521,8 @@ void VirtualMachine::executeThread() {
 				} else {
 					x = vmVariables[x];
 				}
-			} 
-			else 
+			}
+			else
 			{
 				if (opcode & 0x10) { // 0001 0000 is set
 					x += 0x100;
@@ -548,15 +548,15 @@ void VirtualMachine::executeThread() {
 				{
 					--_scriptPtr.pc;
 					zoom = 0x40;
-				} 
-				else 
+				}
+				else
 				{
 					zoom = vmVariables[zoom];
 				}
-			} 
-			else 
+			}
+			else
 			{
-				
+
 				if (opcode & 1) { // 0000 0001 is set
 					res->_useSegVideo2 = true;
 					--_scriptPtr.pc;
@@ -565,21 +565,21 @@ void VirtualMachine::executeThread() {
 			}
 			debug(DBG_VIDEO, "vid_opcd_0x40 : off=0x%X x=%d y=%d", off, x, y);
 			video->setDataBuffer(res->_useSegVideo2 ? res->_segVideo2 : res->segCinematic, off);
-			video->readAndDrawPolygon(0xFF, zoom, Point(x, y));
+			video->readAndDrawPolygon(0xFF, zoom, Point(x*video->zoom_mul_x, y*video->zoom_mul_y));
 
 			continue;
-		} 
-		 
-		
-		if (opcode > 0x1A) 
+		}
+
+
+		if (opcode > 0x1A)
 		{
 			error("VirtualMachine::executeThread() ec=0x%X invalid opcode=0x%X", 0xFFF, opcode);
-		} 
-		else 
+		}
+		else
 		{
 			(this->*opcodeTable[opcode])();
 		}
-		
+
 	}
 }
 
@@ -668,13 +668,13 @@ void VirtualMachine::inp_handleSpecialKeys() {
 void VirtualMachine::snd_playSound(uint16_t resNum, uint8_t freq, uint8_t vol, uint8_t channel) {
 
 	debug(DBG_SND, "snd_playSound(0x%X, %d, %d, %d)", resNum, freq, vol, channel);
-	
+
 	MemEntry *me = &res->_memList[resNum];
 
 	if (me->state != MEMENTRY_STATE_LOADED)
 		return;
 
-	
+
 	if (vol == 0) {
 		mixer->stopChannel(channel);
 	} else {
@@ -689,7 +689,7 @@ void VirtualMachine::snd_playSound(uint16_t resNum, uint8_t freq, uint8_t vol, u
 		assert(freq < 40);
 		mixer->playChannel(channel & 3, &mc, frequenceTable[freq], MIN(vol, 0x3F));
 	}
-	
+
 }
 
 void VirtualMachine::snd_playMusic(uint16_t resNum, uint16_t delay, uint8_t pos) {
