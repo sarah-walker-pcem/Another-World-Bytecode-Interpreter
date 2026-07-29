@@ -1,2 +1,7 @@
 Set AnotherWorld$Dir <Obey$Dir>
-Run <AnotherWorld$Dir>.!RunImage
+RMEnsure CallASWI 0.19 RMLoad System:Modules.CallASWI
+RMEnsure SharedULib 1.16 RMLoad System:Modules.SharedULib
+RMEnsure GameModes 0.0 RMLoad System:Modules.GameModes
+Run <AnotherWorld$Dir>.Menu
+If <AnotherWorld$Run>="1" Then Run <AnotherWorld$Dir>.!RunImage
+Unset AnotherWorld$Run
