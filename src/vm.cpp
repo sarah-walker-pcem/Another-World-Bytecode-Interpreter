@@ -159,26 +159,28 @@ void VirtualMachine::op_condJmp() {
 	switch (opcode & 7) {
 	case 0:	// jz
 		expr = (b == a);
-#ifdef BYPASS_PROTECTION
-      if (res->currentPartId == 16000) {
-        //
-        // 0CB8: jmpIf(VAR(0x29) == VAR(0x1E), @0CD3)
-        // ...
-        //
-        if (b == 0x29 && (opcode & 0x80) != 0) {
-          // 4 symbols
-          vmVariables[0x29] = vmVariables[0x1E];
-          vmVariables[0x2A] = vmVariables[0x1F];
-          vmVariables[0x2B] = vmVariables[0x20];
-          vmVariables[0x2C] = vmVariables[0x21];
-          // counters
-          vmVariables[0x32] = 6;
-          vmVariables[0x64] = 20;
-          warning("Script::op_condJmp() bypassing protection");
-          expr = true;
-        }
-      }
-#endif
+//#ifdef BYPASS_PROTECTION
+		if (!sys->getProtection()) {
+      		if (res->currentPartId == 16000) {
+        	//
+        	// 0CB8: jmpIf(VAR(0x29) == VAR(0x1E), @0CD3)
+        	// ...
+        	//
+        	if (b == 0x29 && (opcode & 0x80) != 0) {
+          	// 4 symbols
+          		vmVariables[0x29] = vmVariables[0x1E];
+          		vmVariables[0x2A] = vmVariables[0x1F];
+          		vmVariables[0x2B] = vmVariables[0x20];
+          		vmVariables[0x2C] = vmVariables[0x21];
+          		// counters
+          		vmVariables[0x32] = 6;
+          		vmVariables[0x64] = 20;
+          		warning("Script::op_condJmp() bypassing protection");
+          		expr = true;
+        		}
+      		}
+		}
+//#endif
 		break;
 	case 1: // jnz
 		expr = (b != a);

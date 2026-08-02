@@ -23,7 +23,7 @@
 #include "parts.h"
 
 Engine::Engine(System *paramSys, const char *dataDir, const char *saveDir)
-	: sys(paramSys), vm(&mixer, &res, &player, &video, sys), mixer(sys), res(&video, dataDir), 
+	: sys(paramSys), vm(&mixer, &res, &player, &video, sys), mixer(sys), res(&video, dataDir),
 	player(&mixer, &res, sys), video(&res, sys), _dataDir(dataDir), _saveDir(saveDir), _stateSlot(0) {
 }
 
@@ -69,9 +69,10 @@ void Engine::init() {
 	player.init();
 
 	uint16_t part = GAME_PART1;  // This game part is the protection screen
-#ifdef BYPASS_PROTECTION
-  part = GAME_PART2;
-#endif
+//#ifdef BYPASS_PROTECTION
+	if (!sys->getProtection())
+  		part = GAME_PART2;
+//#endif
   vm.initForPart(part);
 
 

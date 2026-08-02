@@ -78,6 +78,7 @@ struct ArcStub : System {
 	virtual void getDefaultDataDir(const char **path);
 	virtual bool getVideoPages(uint8_t *pages[4]);
 	virtual void getVideoSize(int *w, int *h, int *pitch);
+	virtual bool getProtection();
 
 	bool keyDown(uint8_t key);
 	void timerCallback();
@@ -100,6 +101,8 @@ struct ArcStub : System {
 	bool use_joystick;
 	bool use_vga;
 	bool use_32bpp;
+
+	bool protection;
 
 	uint32_t palette[16];
 
@@ -168,6 +171,8 @@ int ArcStub::loadConfig()
 			width = atoi(s + sizeof("res_x=") - 1);
 		} else if (!strncmp(s, "res_y=", sizeof("res_y=") - 1)) {
 			height = atoi(s + sizeof("res_y=") - 1);
+		} else if (!strncmp(s, "protection=", sizeof("protection=") - 1)) {
+			protection = atoi(s + sizeof("protection=") - 1);
 		}
 
 	} while (1);
@@ -179,6 +184,7 @@ void ArcStub::defaultConfig()
 {
 	width = 320;
 	height = 256;
+	protection = 0;
 }
 
 void ArcStub::init(const char *title) {
@@ -613,6 +619,11 @@ void ArcStub::getVideoSize(int *w, int *h, int *pitch)
 	*w = width_real;
 	*h = height_real;
 	*pitch = width;
+}
+
+bool ArcStub::getProtection()
+{
+	return protection;
 }
 
 ArcStub sysImplementation;

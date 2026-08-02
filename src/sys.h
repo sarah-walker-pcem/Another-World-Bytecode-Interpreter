@@ -81,6 +81,8 @@ struct System {
 	virtual bool getVideoPages(uint8_t *pages[4]) = 0;
 
 	virtual void getVideoSize(int *width, int *height, int *pitch) = 0;
+
+	virtual bool getProtection() = 0;
 };
 
 struct MutexStack {
