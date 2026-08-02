@@ -34,6 +34,12 @@
 #define InternalKey_C			82
 #define InternalKey_Escape		112
 
+#define InternalKey_Z			97
+#define InternalKey_X			66
+#define InternalKey_Quote		79
+#define InternalKey_Slash		104
+#define InternalKey_Return		73
+
 #define OSByte_Vsync 			19
 #define OSByte_WriteVDUScreenBank	112
 #define OSByte_WriteDisplayScreenBank	113
@@ -445,23 +451,23 @@ bool ArcStub::keyDown(uint8_t key)
 }
 
 void ArcStub::processEvents() {
-	if (keyDown(InternalKey_Up))
+	if (keyDown(InternalKey_Up) || keyDown(InternalKey_Quote))
 		input.dirMask |= PlayerInput::DIR_UP;
 	else
 		input.dirMask &= ~PlayerInput::DIR_UP;
-	if (keyDown(InternalKey_Down))
+	if (keyDown(InternalKey_Down) || keyDown(InternalKey_Slash))
 		input.dirMask |= PlayerInput::DIR_DOWN;
 	else
 		input.dirMask &= ~PlayerInput::DIR_DOWN;
-	if (keyDown(InternalKey_Left))
+	if (keyDown(InternalKey_Left) || keyDown(InternalKey_Z))
 		input.dirMask |= PlayerInput::DIR_LEFT;
 	else
 		input.dirMask &= ~PlayerInput::DIR_LEFT;
-	if (keyDown(InternalKey_Right))
+	if (keyDown(InternalKey_Right) || keyDown(InternalKey_X))
 		input.dirMask |= PlayerInput::DIR_RIGHT;
 	else
 		input.dirMask &= ~PlayerInput::DIR_RIGHT;
-	if (keyDown(InternalKey_Space))
+	if (keyDown(InternalKey_Space) || keyDown(InternalKey_Return))
 		input.button = true;
 	else
 		input.button = false;
