@@ -124,7 +124,6 @@ extern uint32_t *callback_register_buffer;
 
 static uint32_t videoSize = 320*480*2;
 static uint32_t videoSizeVga = 160*480*2;
-static const uint32_t videoSize32bpp = 640*480*4*2;
 
 static uint32_t backBufferSize = 320*400*2;
 
@@ -139,7 +138,7 @@ void ArcStub::initVideoMemory()
 	const uint32_t vdu_variables_in[] = {148, -1};
 	uint32_t *screen_addr = 0;
 	uint32_t area_size;
-	uint32_t video_size = use_32bpp ? videoSize32bpp : (use_vga ? videoSizeVga : videoSize);
+	uint32_t video_size = use_32bpp ? (use_vga ? videoSizeVga*4*2 : videoSize*4*2) : (use_vga ? videoSizeVga : videoSize);
 
 	// Read old screen size
 	_swi(OS_ReadDynamicArea, _IN(0) | _OUT(1), 2, &area_size);
@@ -205,7 +204,7 @@ void ArcStub::init(const char *title) {
 		-1,
 		-1
 	};
-	const uint32_t mode_640x480x32[] = {
+	uint32_t mode_32bpp[] = {
 		0x00000001, // flags
 		640,
 		480,
@@ -241,12 +240,16 @@ void ArcStub::init(const char *title) {
 		if (use_vga) {
 			mode_4bpp[1] = width;
 			mode_4bpp[2] = 480;
+			mode_32bpp[1] = width;
+			mode_32bpp[2] = 480;
 		} else {
 			mode_4bpp[1] = width;
 			mode_4bpp[2] = height;
+			mode_32bpp[1] = width;
+			mode_32bpp[2] = height;
 		}
 
-		// Use upscaling to 640x480x32 if 16 colour support is unavailable (e.g. Raspberry Pi)
+		// Use upscaling to 32 bpp if 16 colour support is unavailable (e.g. Raspberry Pi)
 		if (!has_mode48)
 			use_32bpp = true;
 	} else {
@@ -266,7 +269,7 @@ void ArcStub::init(const char *title) {
 	}
 
 	if (use_32bpp) {
-		_swi(OS_ScreenMode, _INR(0,1), 0, mode_640x480x32);
+		_swi(OS_ScreenMode, _INR(0,1), 0, mode_32bpp);
 		for (int i = 0; i < sizeof(cursor_off_string); i++)
 			_kernel_oswrch(cursor_off_string[i]);
 	} else if (riscos_version >= 0xa5) {
@@ -359,28 +362,47 @@ void ArcStub::updateDisplay(const uint8_t *src, uint8_t pageId) {
 
 		_kernel_osbyte(OSByte_WriteVDUScreenBank, new_page, 0);
 		_swi(OS_ReadVduVariables, _IN(0) | _IN(1), &vdu_variables_in, &screen_addr);
-		screen_addr += 40*640;
-		screen_addr2 = screen_addr + 640;
 
-		for (int y = 0; y < 200; y++) {
-			for (int x = 0; x < 320; x += 2) {
-				uint32_t col;
-				uint8_t dat = *src++;
+		if (use_vga) {
+			int offset = (480 - (height_real * 2)) / 2;
 
-				col = palette[dat & 0xf];
-				*screen_addr++ = col;
-				*screen_addr++ = col;
-				*screen_addr2++ = col;
-				*screen_addr2++ = col;
+			screen_addr += offset * width;
+			screen_addr2 = screen_addr + width;
 
-				col = palette[dat >> 4];
-				*screen_addr++ = col;
-				*screen_addr++ = col;
-				*screen_addr2++ = col;
-				*screen_addr2++ = col;
+			for (int y = 0; y < height_real; y++) {
+				for (int x = 0; x < width_real; x += 2) {
+					uint32_t col;
+					uint8_t dat = *src++;
+
+					col = palette[dat & 0xf];
+					screen_addr[x] = col;
+					screen_addr2[x] = col;
+
+					col = palette[dat >> 4];
+					screen_addr[x+1] = col;
+					screen_addr2[x+1] = col;
+				}
+				screen_addr += width*2;
+				screen_addr2 += width*2;
 			}
-			screen_addr += 640;
-			screen_addr2 += 640;
+		} else {
+			int offset = (height - height_real) / 2;
+
+			screen_addr += offset * width;
+
+			for (int y = 0; y < height_real; y++) {
+				for (int x = 0; x < width_real; x += 2) {
+					uint32_t col;
+					uint8_t dat = *src++;
+
+					col = palette[dat & 0xf];
+					screen_addr[x] = col;
+
+					col = palette[dat >> 4];
+					screen_addr[x+1] = col;
+				}
+				screen_addr += width;
+			}
 		}
 	} else if (use_vga) {
 		const uint32_t vdu_variables_in[] = {148, -1};
@@ -409,7 +431,7 @@ void ArcStub::updateDisplay(const uint8_t *src, uint8_t pageId) {
 
 bool ArcStub::getVideoPages(uint8_t *pages[4])
 {
-	if (use_vga) {
+	if (use_vga || use_32bpp) {
 		return false;
 	}
 
