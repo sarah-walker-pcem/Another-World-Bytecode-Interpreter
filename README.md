@@ -33,8 +33,8 @@ Copy the data files from the DOS version of the game (BANK* and MEMLIST.BIN) to 
 Controls:
 ---------
 
-- Arrow keys or joystick to move
-- SPACE or joystick button to fire/perform action
+- Arrow keys, Z X ' / or joystick to move
+- SPACE, ENTER or joystick button to fire/perform action
 - C to enter level code
 - Escape to quit
 
@@ -66,9 +66,9 @@ Fabien Sanglard
 About:
 ------
 
-raw is a re-implementation of the engine used in the game Another World. This 
-game, released under the name Out Of This World in non-European countries, was 
-written by Eric Chahi at the beginning of the '90s. More information can be 
+raw is a re-implementation of the engine used in the game Another World. This
+game, released under the name Out Of This World in non-European countries, was
+written by Eric Chahi at the beginning of the '90s. More information can be
 found on [MobyGames](https://www.mobygames.com/game/564/out-of-this-world/).
 
 Supported Versions:
@@ -88,7 +88,7 @@ Running:
 You will need the original files, here is the required list :
 - BANK*
 - MEMLIST.BIN
-	
+
 To start the game, you can either :
 - put the game's datafiles in the same directory as the executable
 - use the --datapath command line option to specify the datafiles directory
