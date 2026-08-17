@@ -107,6 +107,7 @@ struct ArcStub : System {
 	bool use_joystick;
 	bool use_vga;
 	bool use_32bpp;
+	bool width_double;
 
 	bool protection;
 
@@ -240,18 +241,19 @@ void ArcStub::init(const char *title) {
 		if (use_vga) {
 			mode_4bpp[1] = width;
 			mode_4bpp[2] = 480;
-			mode_32bpp[1] = width;
+			mode_32bpp[1] = (width < 640) ? width*2 : width;
 			mode_32bpp[2] = 480;
 		} else {
 			mode_4bpp[1] = width;
 			mode_4bpp[2] = height;
-			mode_32bpp[1] = width;
+			mode_32bpp[1] = (width < 640) ? width*2 : width;
 			mode_32bpp[2] = height;
 		}
 
 		// Use upscaling to 32 bpp if 16 colour support is unavailable (e.g. Raspberry Pi)
 		if (!has_mode48)
 			use_32bpp = true;
+		width_double = use_32bpp && width < 640;
 	} else {
 		int monitor_type = (_kernel_osbyte(OSByte_ReadCMOSRAM, 133, 0) >> 10) & 0x1f;
 
@@ -366,42 +368,87 @@ void ArcStub::updateDisplay(const uint8_t *src, uint8_t pageId) {
 		if (use_vga) {
 			int offset = (480 - (height_real * 2)) / 2;
 
-			screen_addr += offset * width;
-			screen_addr2 = screen_addr + width;
+			if (width_double) {
+				screen_addr += offset * width*2;
+				screen_addr2 = screen_addr + width*2;
+			} else {
+				screen_addr += offset * width;
+				screen_addr2 = screen_addr + width;
+			}
 
 			for (int y = 0; y < height_real; y++) {
-				for (int x = 0; x < width_real; x += 2) {
-					uint32_t col;
-					uint8_t dat = *src++;
+				if (width_double) {
+					for (int x = 0; x < width_real*2; x += 4) {
+						uint32_t col;
+						uint8_t dat = *src++;
 
-					col = palette[dat & 0xf];
-					screen_addr[x] = col;
-					screen_addr2[x] = col;
+						col = palette[dat & 0xf];
+						screen_addr[x] = col;
+						screen_addr[x+1] = col;
+						screen_addr2[x] = col;
+						screen_addr2[x+1] = col;
 
-					col = palette[dat >> 4];
-					screen_addr[x+1] = col;
-					screen_addr2[x+1] = col;
+						col = palette[dat >> 4];
+						screen_addr[x+2] = col;
+						screen_addr[x+3] = col;
+						screen_addr2[x+2] = col;
+						screen_addr2[x+3] = col;
+					}
+					screen_addr += width*4;
+					screen_addr2 += width*4;
+				} else {
+					for (int x = 0; x < width_real; x += 2) {
+						uint32_t col;
+						uint8_t dat = *src++;
+
+						col = palette[dat & 0xf];
+						screen_addr[x] = col;
+						screen_addr2[x] = col;
+
+						col = palette[dat >> 4];
+						screen_addr[x+1] = col;
+						screen_addr2[x+1] = col;
+					}
+					screen_addr += width*2;
+					screen_addr2 += width*2;
 				}
-				screen_addr += width*2;
-				screen_addr2 += width*2;
 			}
 		} else {
 			int offset = (height - height_real) / 2;
 
-			screen_addr += offset * width;
+			if (width_double)
+				screen_addr += offset * width*2;
+			else
+				screen_addr += offset * width;
 
 			for (int y = 0; y < height_real; y++) {
-				for (int x = 0; x < width_real; x += 2) {
-					uint32_t col;
-					uint8_t dat = *src++;
+				if (width_double) {
+					for (int x = 0; x < width_real*2; x += 4) {
+						uint32_t col;
+						uint8_t dat = *src++;
 
-					col = palette[dat & 0xf];
-					screen_addr[x] = col;
+						col = palette[dat & 0xf];
+						screen_addr[x] = col;
+						screen_addr[x+1] = col;
 
-					col = palette[dat >> 4];
-					screen_addr[x+1] = col;
+						col = palette[dat >> 4];
+						screen_addr[x+2] = col;
+						screen_addr[x+3] = col;
+					}
+					screen_addr += width*2;
+				} else {
+					for (int x = 0; x < width_real; x += 2) {
+						uint32_t col;
+						uint8_t dat = *src++;
+
+						col = palette[dat & 0xf];
+						screen_addr[x] = col;
+
+						col = palette[dat >> 4];
+						screen_addr[x+1] = col;
+					}
+					screen_addr += width;
 				}
-				screen_addr += width;
 			}
 		}
 	} else if (use_vga) {
